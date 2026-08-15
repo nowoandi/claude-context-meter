@@ -1,0 +1,3 @@
+# Shortcuts store the absolute path of their target — machine-specific, and it would
+# publish the folder layout of whoever made it. Everyone creates their own.
+*.lnk
