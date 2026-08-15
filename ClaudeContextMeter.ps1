@@ -5,23 +5,54 @@
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
+# ---------- diagnostics ----------
+# The log is opened before anything else can fail, and it APPENDS.
+#
+# It used to start after the single-instance guard and be written with Set-Content, which
+# cost both halves of a diagnosis on 15.08.2026: an instance that exited at the guard left
+# no trace at all, and a widget that had been running for two hours turned out to have
+# written nothing either - Set-Content lost a race against a second copy and failed
+# non-terminatingly (the default ErrorActionPreference is Continue, so the script carried
+# on, unlogged). Overwriting on top of that meant every restart destroyed the evidence of
+# the run that had just died. A widget that can disappear without a line in its own log
+# cannot be debugged at all.
+$DbgLog = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.log"
+
+function Write-Log([string]$text) {
+    # Logging must never take the widget down, and must not lose a line to a race with a
+    # second copy: a few short retries cover the moment the file is held elsewhere.
+    for ($i = 0; $i -lt 5; $i++) {
+        try {
+            $line = "{0}  [{1}]  {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $PID, $text
+            Add-Content -Path $DbgLog -Value $line -Encoding UTF8 -ErrorAction Stop
+            return
+        } catch { Start-Sleep -Milliseconds 40 }
+    }
+}
+
+try {
+    if ((Test-Path $DbgLog) -and (Get-Item $DbgLog).Length -gt 512000) {
+        Move-Item $DbgLog "$DbgLog.1" -Force -ErrorAction SilentlyContinue
+    }
+} catch {}
+
+Write-Log "---- start | script: $PSCommandPath"
+trap { Write-Log ("TRAP: " + ($_ | Out-String).Trim()); break }
+
 # single instance guard.
 # AbandonedMutexException is a SUCCESS here, not a failure: it means the previous widget
 # was killed instead of closed (task manager, a hard reboot, a crash) and the mutex is now
-# ours. Letting it escape kept the widget from ever starting again after such a kill - and
-# silently, because both $DbgLog and the trap below are set up further down. Caught on
-# 15.08.2026 while restarting the widget during development.
+# ours. Letting it escape kept the widget from ever starting again after such a kill.
+# Both outcomes are logged now: "it vanished" and "it refused to start because a copy in
+# another folder already held the mutex" look identical on screen and are different bugs.
 $script:mutex = New-Object System.Threading.Mutex($false, "Global\ClaudeContextMeter")
 try {
     $free = $script:mutex.WaitOne(0, $false)
 } catch [System.Threading.AbandonedMutexException] {
     $free = $true
+    Write-Log "mutex was abandoned - the previous instance did not exit cleanly"
 }
-if (-not $free) { exit }
-
-$DbgLog = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.log"
-"start $(Get-Date -Format o)" | Set-Content $DbgLog
-trap { $_ | Out-String | Add-Content $DbgLog; break }
+if (-not $free) { Write-Log "another instance already holds the mutex - exiting"; exit }
 
 $ProjectsDir = Join-Path $env:USERPROFILE ".claude\projects"
 $CoworkVmDir = Join-Path $env:APPDATA "Claude\local-agent-mode-sessions"
@@ -43,8 +74,18 @@ $StateFile   = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.state.json"
 $DefaultWindow = [long]1000000
 $SmallWindow   = [long]200000
 $FastMs      = 600      # tick while catching up on history
-$SlowMs      = 3000     # normal tick
-$ScanEverySec = 30      # full recursive rescan is ~1.3 s here — do it rarely, not per tick
+# Refresh presets. The expensive half is the recursive rescan (~1.3 s over 370 logs), so a
+# lighter setting has to stretch BOTH the tick and the rescan — slowing only the tick would
+# keep most of the cost and lose the freshness anyway. Picked from the menu, remembered in
+# the state file. 'normal' is what the widget has always done.
+$RefreshPresets = @(
+    @{ Key = 'normal'; Ms = 3000;  Scan = 30  },
+    @{ Key = 'easy';   Ms = 10000; Scan = 90  },
+    @{ Key = 'low';    Ms = 30000; Scan = 300 }
+)
+$script:SlowMs       = 3000     # normal tick
+$script:ScanEverySec = 30       # full recursive rescan — do it rarely, not per tick
+$script:Refresh      = 'normal'
 $ActiveMin   = 180      # fallback mode: session is "active" if log written within N minutes
 $StaleMin    = 30       # dim the row after N minutes of silence
 $MaxRows     = 6
@@ -172,7 +213,7 @@ function Sync-AutostartPath {
         $want = Get-AutostartCommand
         if ($cur -ne $want) {
             Set-ItemProperty -Path $RunKey -Name $RunValueName -Value $want -ErrorAction Stop
-            "autostart path updated -> $want" | Add-Content $DbgLog
+            Write-Log "autostart path updated -> $want"
         }
     } catch {}
 }
@@ -217,7 +258,7 @@ function Invoke-AutostartMigration {
                     if (-not (Get-AutostartEnabled)) { Set-AutostartEnabled $true | Out-Null }
                     if (Get-AutostartEnabled) {
                         Remove-Item $lnk -Force -ErrorAction SilentlyContinue
-                        "legacy startup shortcut removed" | Add-Content $DbgLog
+                        Write-Log "legacy startup shortcut removed"
                     }
                 }
             } catch {}
@@ -234,7 +275,7 @@ function Invoke-AutostartMigration {
                 if (-not (Get-AutostartEnabled)) { Set-AutostartEnabled $true | Out-Null }
                 if (Get-AutostartEnabled) {
                     Unregister-ScheduledTask -TaskName $LegacyTask -Confirm:$false -ErrorAction SilentlyContinue
-                    "legacy scheduled task removed" | Add-Content $DbgLog
+                    Write-Log "legacy scheduled task removed"
                 }
             }
         }
@@ -272,6 +313,10 @@ $Strings = @{
     'tip.click'       = @{ ru = 'клик — показать окно Claude'; en = 'click — bring Claude to front' }
     'menu.autostart'  = @{ ru = 'Запускать при входе в систему'; en = 'Start at login' }
     'menu.language'   = @{ ru = 'Язык';               en = 'Language' }
+    'menu.refresh'    = @{ ru = 'Частота обновления'; en = 'Refresh rate' }
+    'refresh.normal'  = @{ ru = 'Обычная';            en = 'Normal' }
+    'refresh.easy'    = @{ ru = 'Экономная';          en = 'Easy' }
+    'refresh.low'     = @{ ru = 'Минимальная';        en = 'Minimal' }
     'menu.close'      = @{ ru = 'Закрыть';            en = 'Close' }
 }
 
@@ -434,7 +479,7 @@ function Scan-Files {
     # interval itself — that was the lag. Enumerate rarely; between times just re-stat the
     # handful of logs that can actually have grown.
     $now = Get-Date
-    if ($script:LastScan -and ($now - $script:LastScan).TotalSeconds -lt $ScanEverySec) {
+    if ($script:LastScan -and ($now - $script:LastScan).TotalSeconds -lt $script:ScanEverySec) {
         $warm = $now.AddHours(-24)
         foreach ($st in $Cache.Values) {
             if ($st.File.LastWriteTime -lt $warm -and $st.File.Length -le $st.Offset) { continue }
@@ -567,6 +612,23 @@ function Get-RunningSessionIds {
 
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
+
+# An exception thrown inside a WPF event handler tears the whole application down, and the
+# PowerShell trap above never sees it — the process is simply gone. That is the shape of a
+# widget that "disappears now and then": a click or a menu action lands on a bad state once
+# an hour and takes everything with it. Logged and swallowed instead: one broken click is
+# not a reason to lose the widget. The AppDomain handler below catches what is left, so
+# even a genuinely fatal end leaves a line behind.
+$window.Dispatcher.Add_UnhandledException({
+    param($s, $e)
+    Write-Log ("DISPATCHER: " + $e.Exception.ToString())
+    $e.Handled = $true
+})
+[AppDomain]::CurrentDomain.add_UnhandledException({
+    param($s, $e)
+    Write-Log ("FATAL: " + $e.ExceptionObject.ToString())
+})
+
 $RowsPanel = $window.FindName("RowsPanel")
 $Sum5      = $window.FindName("Sum5")
 $Sum7      = $window.FindName("Sum7")
@@ -592,24 +654,42 @@ $menu = New-Object Windows.Controls.ContextMenu
 $miAuto = New-Object Windows.Controls.MenuItem
 $miAuto.IsCheckable = $true
 $miLang = New-Object Windows.Controls.MenuItem
+$miRefresh = New-Object Windows.Controls.MenuItem
 $miClose = New-Object Windows.Controls.MenuItem
+
+function Apply-Refresh([string]$key) {
+    $p = $RefreshPresets | Where-Object { $_.Key -eq $key } | Select-Object -First 1
+    if (-not $p) { $p = $RefreshPresets[0] }
+    $script:Refresh      = $p.Key
+    $script:SlowMs       = $p.Ms
+    $script:ScanEverySec = $p.Scan
+    # Only touch the timer when it is idling at the slow rate; while catching up on history
+    # it runs at $FastMs and the next tick sets the interval itself anyway.
+    if ($timer -and $timer.Interval.TotalMilliseconds -gt $FastMs) {
+        $timer.Interval = [TimeSpan]::FromMilliseconds($script:SlowMs)
+    }
+    foreach ($it in $miRefresh.Items) { $it.IsChecked = ($it.Tag -eq $script:Refresh) }
+    Write-Log ("refresh set to {0} (tick {1} ms, rescan {2} s)" -f $p.Key, $p.Ms, $p.Scan)
+}
 
 function Apply-Language {
     $HdrLbl.Text   = T 'hdr.chats'
     $Lbl5.Text     = T 'sum.5h'
     $Lbl7.Text     = T 'sum.7d'
     $LoadNote.Text = T 'note.loading'
-    $miAuto.Header  = T 'menu.autostart'
-    $miLang.Header  = T 'menu.language'
-    $miClose.Header = T 'menu.close'
+    $miAuto.Header    = T 'menu.autostart'
+    $miLang.Header    = T 'menu.language'
+    $miRefresh.Header = T 'menu.refresh'
+    $miClose.Header   = T 'menu.close'
     foreach ($it in $miLang.Items) { $it.IsChecked = ($it.Tag -eq $script:Lang) }
+    foreach ($it in $miRefresh.Items) { $it.Header = T ('refresh.' + $it.Tag) }
 }
 
 $miAuto.Add_Click({
     $err = Set-AutostartEnabled ([bool]$miAuto.IsChecked)
     # Put the tick back where reality is, not where the click left it.
     $miAuto.IsChecked = Get-AutostartEnabled
-    if ($err) { "autostart change failed: $err" | Add-Content $DbgLog }
+    if ($err) { Write-Log "autostart change failed: $err" }
 }.GetNewClosure())
 $menu.Items.Add($miAuto) | Out-Null
 
@@ -629,6 +709,20 @@ foreach ($l in $UiLangs) {
 }
 $menu.Items.Add($miLang) | Out-Null
 
+foreach ($r in $RefreshPresets) {
+    $mi = New-Object Windows.Controls.MenuItem
+    $mi.Tag = $r.Key
+    $mi.IsCheckable = $true
+    $mi.Add_Click({
+        param($s, $e)
+        Apply-Refresh $s.Tag
+        $script:State['refresh'] = $s.Tag
+        Save-State $script:State
+    })
+    $miRefresh.Items.Add($mi) | Out-Null
+}
+$menu.Items.Add($miRefresh) | Out-Null
+
 $menu.Items.Add((New-Object Windows.Controls.Separator)) | Out-Null
 $miClose.Add_Click({ $window.Close() }.GetNewClosure())
 $menu.Items.Add($miClose) | Out-Null
@@ -637,6 +731,7 @@ $menu.Items.Add($miClose) | Out-Null
 # variable: an entry removed from outside would otherwise still show as ticked.
 $menu.Add_Opened({ $miAuto.IsChecked = Get-AutostartEnabled }.GetNewClosure())
 $window.ContextMenu = $menu
+Apply-Refresh $(if ($script:State['refresh']) { $script:State['refresh'] } else { 'normal' })
 Apply-Language
 
 # Mouse-DOWN with Handled, not mouse-up. The window turns every unhandled mouse-down into
@@ -915,6 +1010,17 @@ function Invoke-Tick {
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
 
+    # A heartbeat with the numbers that would explain a slow death — memory, handles, how
+    # many logs are being tracked. Every ~10 minutes, so the log stays readable while still
+    # showing whether the widget grows over a long session.
+    if (($script:TickNo % 200) -eq 0) {
+        try {
+            $me = [System.Diagnostics.Process]::GetCurrentProcess()
+            Write-Log ("heartbeat tick={0} privateMB={1} handles={2} logs={3} rows={4}" -f `
+                $script:TickNo, [math]::Round($me.PrivateMemorySize64 / 1MB), $me.HandleCount, $Cache.Count, $RowsPanel.Children.Count)
+        } catch {}
+    }
+
     # prune old buckets occasionally
     if (($script:TickNo % 200) -eq 0) {
         $cut = [long][Math]::Floor(([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 7 * 86400) / 600)
@@ -924,7 +1030,7 @@ function Invoke-Tick {
 
     Update-UI
     if ($script:HeavyPending) { $timer.Interval = [TimeSpan]::FromMilliseconds($FastMs) }
-    else { $timer.Interval = [TimeSpan]::FromMilliseconds($SlowMs) }
+    else { $timer.Interval = [TimeSpan]::FromMilliseconds($script:SlowMs) }
 }
 
 $timer = New-Object Windows.Threading.DispatcherTimer
@@ -936,8 +1042,17 @@ $timer.Start()
 # path left behind by a move. Both are no-ops once done, and neither may block the start:
 # a widget that refuses to appear because of a registry hiccup is worse than one without
 # autostart.
-try { Invoke-AutostartMigration } catch { $_ | Out-String | Add-Content $DbgLog }
-try { Sync-AutostartPath } catch { $_ | Out-String | Add-Content $DbgLog }
+try { Invoke-AutostartMigration } catch { Write-Log ("migration failed: " + ($_ | Out-String).Trim()) }
+try { Sync-AutostartPath } catch { Write-Log ("path sync failed: " + ($_ | Out-String).Trim()) }
 
-"showing window $(Get-Date -Format o)" | Add-Content $DbgLog
+# The widget spends its life idling and re-reading logs. BelowNormal means it gets the
+# processor only when nothing else wants it — the honest version of "put it on a spare
+# core", and it works whatever the core count. Pinning to one core would not reduce the
+# work, only confine it, and on a weak machine that hurts rather than helps.
+try {
+    [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal'
+} catch { Write-Log ("could not lower priority: " + $_.Exception.Message) }
+
+Write-Log "showing window"
 $null = $window.ShowDialog()
+Write-Log "window closed - exiting normally"

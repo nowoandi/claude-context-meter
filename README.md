@@ -54,6 +54,13 @@ Click the gear or right-click the widget:
   from the registry every time the menu opens, so an entry removed from outside is
   reflected honestly instead of showing a stale tick.
 - **Language** — English or Russian, applied immediately.
+- **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
+  recursive rescan are stretched together, because the rescan is the expensive half;
+  slowing only the tick would keep the cost and lose the freshness.
+
+The widget runs at `BelowNormal` priority, so it gets the processor only when nothing else
+wants it. Together with the refresh setting that is the honest version of "keep it off my
+way" — pinning it to one core would not reduce the work, only confine it.
 
 The autostart command is built from the script's own location, and a stale path is
 repaired on the next start. Moving the folder does not break it.
