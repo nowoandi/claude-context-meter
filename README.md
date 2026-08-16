@@ -26,7 +26,8 @@ That last column matters more than it looks: 80 % of 200k and 80 % of 1M are ver
 different situations, and a percentage on its own hides which one you are in.
 
 Rows dim after 30 minutes of silence. Hovering a row shows the project path, the exact
-token count, the model, and when the chat was last active.
+token count, the model, and when the chat was last active. Clicking one brings the Claude
+window to the front and leaves its size alone — a maximised window stays maximised.
 
 The footer adds up every session, subagents included, over the two rate-limit windows —
 5 hours and 7 days. When the app has recorded plan usage, the percentage it reports is
@@ -41,18 +42,19 @@ powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File Cla
 Or double-click `Start-ContextMeter.bat`. A shortcut with the app icon is easy to make:
 point it at the `.bat` and set its icon to `ClaudeContextMeter.ico`.
 
-Drag the widget anywhere — it remembers where you put it. Close it with `✕`.
+Drag the widget anywhere — it remembers where you put it. `✕` hides it; it keeps running
+and comes back from the tray icon. Only **Exit** in the tray menu really ends it.
 
 ## Settings
 
 ![The menu](docs/menu.png)
 
-Click the gear or right-click the widget:
+Click the gear, right-click the widget, or right-click the tray icon — the same settings
+either way. Double-clicking the tray icon shows or hides the window.
 
-- **Start at login** — registers the widget under `HKCU\...\CurrentVersion\Run`. No admin
-  rights, no scheduled task, no shortcut in the Startup folder. The state is read back
-  from the registry every time the menu opens, so an entry removed from outside is
-  reflected honestly instead of showing a stale tick.
+- **Start at login** — registers a scheduled task with a logon trigger, running as you,
+  without admin rights. The tick is read from the Task Scheduler every time a menu opens,
+  so a task removed from outside shows as off instead of leaving a stale tick behind.
 - **Language** — English or Russian, applied immediately.
 - **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
   recursive rescan are stretched together, because the rescan is the expensive half;
@@ -62,13 +64,28 @@ The widget runs at `BelowNormal` priority, so it gets the processor only when no
 wants it. Together with the refresh setting that is the honest version of "keep it off my
 way" — pinning it to one core would not reduce the work, only confine it.
 
-The autostart command is built from the script's own location, and a stale path is
-repaired on the next start. Moving the folder does not break it.
+The task's command is built from the script's own location, and a stale path is repaired on
+the next start, so moving the folder does not break it.
 
-If the widget was previously started by a Startup-folder shortcut or a scheduled task, it
-takes those over on first run: the registry entry is written first, and only once that
-succeeded are the old mechanisms removed. Two autostart entries for one program is a
-Task Manager annoyance worth designing out.
+A scheduled task rather than a `Run` registry entry, because a `Run` entry fires at logon
+and never again — and a machine that sleeps for weeks instead of rebooting may not see a
+logon for just as long. There is deliberately no repeating trigger: restarting a widget on
+a timer hides whatever killed it, and pushes it onto the screen on days you are not using
+Claude at all.
+
+Anything the widget was started by before — a Startup-folder shortcut, a `Run` entry — is
+taken over on first run: the task is registered first, and only once that succeeded is the
+old mechanism removed. Two autostart entries for one program is a Task Manager annoyance
+worth designing out.
+
+## Notification area
+
+The tray icon is the answer to "is it running, and where did it go". Its menu carries the
+same settings plus **Show / Hide** and **Exit**, and it is removed on exit rather than left
+as a ghost that only disappears when the mouse brushes it.
+
+Windows 11 files new tray icons under the `^` overflow. Drag it onto the taskbar to keep
+it in sight — that is the user's call to make, not something a program should force.
 
 ## Where the numbers come from
 
