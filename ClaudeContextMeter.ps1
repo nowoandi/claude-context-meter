@@ -83,6 +83,10 @@ if (-not $free) { Write-Log "already running - watchdog start exits here"; exit 
 # autostart task restarts the widget every 15 minutes as a watchdog, and 95 of those 96
 # daily starts find a widget already running. They must be as close to free as possible.
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+# WinForms comes along only for the notification-area icon — WPF has no tray icon of its
+# own. The two frameworks coexist here because the WPF dispatcher already pumps the message
+# loop that NotifyIcon needs; nothing else in this widget touches WinForms.
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
 $ProjectsDir = Join-Path $env:USERPROFILE ".claude\projects"
 $CoworkVmDir = Join-Path $env:APPDATA "Claude\local-agent-mode-sessions"
@@ -372,7 +376,9 @@ $Strings = @{
     'refresh.normal'  = @{ ru = 'Обычная';            en = 'Normal' }
     'refresh.easy'    = @{ ru = 'Экономная';          en = 'Easy' }
     'refresh.low'     = @{ ru = 'Минимальная';        en = 'Minimal' }
-    'menu.close'      = @{ ru = 'Закрыть';            en = 'Close' }
+    'menu.close'      = @{ ru = 'Скрыть';             en = 'Hide' }
+    'menu.show'       = @{ ru = 'Показать';           en = 'Show' }
+    'menu.exit'       = @{ ru = 'Выйти';              en = 'Exit' }
 }
 
 function T([string]$key) {
@@ -738,6 +744,15 @@ function Apply-Language {
     $miClose.Header   = T 'menu.close'
     foreach ($it in $miLang.Items) { $it.IsChecked = ($it.Tag -eq $script:Lang) }
     foreach ($it in $miRefresh.Items) { $it.Header = T ('refresh.' + $it.Tag) }
+    # The tray menu carries the same settings and must follow the same language.
+    if ($tiAuto) {
+        $tiAuto.Text    = T 'menu.autostart'
+        $tiLang.Text    = T 'menu.language'
+        $tiRefresh.Text = T 'menu.refresh'
+        $tiExit.Text    = T 'menu.exit'
+        $tiShow.Text    = T 'menu.show'
+        foreach ($it in $tiRefresh.DropDownItems) { $it.Text = T ('refresh.' + $it.Tag) }
+    }
 }
 
 $miAuto.Add_Click({
@@ -779,13 +794,94 @@ foreach ($r in $RefreshPresets) {
 $menu.Items.Add($miRefresh) | Out-Null
 
 $menu.Items.Add((New-Object Windows.Controls.Separator)) | Out-Null
-$miClose.Add_Click({ $window.Close() }.GetNewClosure())
+$miClose.Add_Click({ Hide-Widget }.GetNewClosure())
 $menu.Items.Add($miClose) | Out-Null
 
 # Read the tick from the registry every time the menu opens, never from a remembered
 # variable: an entry removed from outside would otherwise still show as ticked.
 $menu.Add_Opened({ $miAuto.IsChecked = Get-AutostartEnabled }.GetNewClosure())
 $window.ContextMenu = $menu
+
+# ---------- notification area ----------
+# Until now there was nothing anywhere saying the widget was running or set to start at
+# login, and the close button ended the process — so "closed" and "gone until I launch it
+# again" were the same thing. The tray icon is both the missing indicator and the way back:
+# the cross now hides the window, and only Exit here really ends it.
+function Show-Widget {
+    $window.Show()
+    $window.Topmost = $true
+    $window.Activate()
+}
+function Hide-Widget {
+    # Save the position on the way out — the window may never be "closed" again.
+    try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}
+    $window.Hide()
+}
+function Exit-Widget {
+    try { $tray.Visible = $false; $tray.Dispose() } catch {}
+    $window.Close()
+}
+
+$trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$tiShow    = $trayMenu.Items.Add("Show")
+$trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$tiAuto    = $trayMenu.Items.Add("Start at login")
+$tiLang    = New-Object System.Windows.Forms.ToolStripMenuItem
+$tiRefresh = New-Object System.Windows.Forms.ToolStripMenuItem
+$trayMenu.Items.Add($tiLang) | Out-Null
+$trayMenu.Items.Add($tiRefresh) | Out-Null
+$trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$tiExit    = $trayMenu.Items.Add("Exit")
+
+$tiShow.Add_Click({ Show-Widget })
+$tiExit.Add_Click({ Exit-Widget })
+$tiAuto.Add_Click({
+    param($s, $e)
+    $err = Set-AutostartEnabled (-not (Get-AutostartEnabled))
+    if ($err) { Write-Log "autostart change failed: $err" }
+})
+
+foreach ($l in $UiLangs) {
+    $it = $tiLang.DropDownItems.Add($l.Name)
+    $it.Tag = $l.Code
+    $it.Add_Click({
+        param($s, $e)
+        $script:Lang = $s.Tag
+        $script:State['lang'] = $s.Tag
+        Save-State $script:State
+        Apply-Language
+    })
+}
+foreach ($r in $RefreshPresets) {
+    $it = $tiRefresh.DropDownItems.Add($r.Key)
+    $it.Tag = $r.Key
+    $it.Add_Click({
+        param($s, $e)
+        Apply-Refresh $s.Tag
+        $script:State['refresh'] = $s.Tag
+        Save-State $script:State
+    })
+}
+
+# Both menus read the truth when they open, never a remembered flag.
+$trayMenu.Add_Opening({
+    $tiAuto.Checked = Get-AutostartEnabled
+    $tiShow.Text = if ($window.IsVisible) { T 'menu.close' } else { T 'menu.show' }
+    foreach ($it in $tiLang.DropDownItems)    { $it.Checked = ($it.Tag -eq $script:Lang) }
+    foreach ($it in $tiRefresh.DropDownItems) { $it.Checked = ($it.Tag -eq $script:Refresh) }
+}.GetNewClosure())
+
+$tray = New-Object System.Windows.Forms.NotifyIcon
+try {
+    $icoPath = Join-Path (Split-Path -Parent $PSCommandPath) 'ClaudeContextMeter.ico'
+    if (Test-Path $icoPath) { $tray.Icon = New-Object System.Drawing.Icon($icoPath, 16, 16) }
+} catch { Write-Log ("tray icon could not be loaded: " + $_.Exception.Message) }
+if (-not $tray.Icon) { $tray.Icon = [System.Drawing.SystemIcons]::Application }
+$tray.Text = "Claude Context Meter"
+$tray.ContextMenuStrip = $trayMenu
+$tray.Visible = $true
+$tray.Add_MouseDoubleClick({ if ($window.IsVisible) { Hide-Widget } else { Show-Widget } })
+
 Apply-Refresh $(if ($script:State['refresh']) { $script:State['refresh'] } else { 'normal' })
 Apply-Language
 
@@ -817,8 +913,16 @@ if (Test-Path $PosFile) {
     } catch {}
 }
 $window.Add_MouseLeftButtonDown({ try { $window.DragMove() } catch {} })
-$window.Add_Closed({ try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}; Save-ModelMax })
-$CloseBtn.Add_MouseLeftButtonUp({ $window.Close() })
+$window.Add_Closed({
+    try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}
+    Save-ModelMax
+    # Whichever way the window ends, the tray icon must go with it — an orphaned icon sits
+    # in the notification area until the mouse happens to brush it.
+    try { if ($tray) { $tray.Visible = $false; $tray.Dispose() } } catch {}
+    Write-Log "window closed - exiting"
+})
+# The cross hides now instead of ending the process; Exit in the tray menu is the real end.
+$CloseBtn.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true; Hide-Widget })
 
 function New-Brush([string]$hex) {
     return New-Object Windows.Media.SolidColorBrush ([Windows.Media.ColorConverter]::ConvertFromString($hex))
