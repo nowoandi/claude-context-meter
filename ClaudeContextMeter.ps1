@@ -373,6 +373,7 @@ $Strings = @{
     'menu.autostart'  = @{ ru = 'Запускать при входе в систему'; en = 'Start at login' }
     'menu.language'   = @{ ru = 'Язык';               en = 'Language' }
     'menu.refresh'    = @{ ru = 'Частота обновления'; en = 'Refresh rate' }
+    'menu.rememberpos'= @{ ru = 'Запоминать положение'; en = 'Remember position' }
     'refresh.normal'  = @{ ru = 'Обычная';            en = 'Normal' }
     'refresh.easy'    = @{ ru = 'Экономная';          en = 'Easy' }
     'refresh.low'     = @{ ru = 'Минимальная';        en = 'Minimal' }
@@ -706,6 +707,18 @@ $script:State = Load-State
 if ($script:State['lang'] -and ($UiLangs.Code -contains $script:State['lang'])) {
     $script:Lang = $script:State['lang']
 }
+# On by default: putting the widget where you want it and finding it there is the expected
+# behaviour, not a feature to opt into.
+$script:RememberPos = $true
+if ($script:State.ContainsKey('rememberPos')) { $script:RememberPos = [bool]$script:State['rememberPos'] }
+
+# Written whenever the window is moved, not only when it is closed. Saving on exit alone
+# meant a widget that was killed rather than closed — which is exactly how this one kept
+# disappearing — lost its position every time and came back in the default corner.
+function Save-Position {
+    if (-not $script:RememberPos) { return }
+    try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}
+}
 
 # Settings live behind the gear and on right-click — 258 px has no room for a settings
 # window, and there are only two settings. Every label the widget draws once at startup is
@@ -716,6 +729,8 @@ $miAuto = New-Object Windows.Controls.MenuItem
 $miAuto.IsCheckable = $true
 $miLang = New-Object Windows.Controls.MenuItem
 $miRefresh = New-Object Windows.Controls.MenuItem
+$miPos = New-Object Windows.Controls.MenuItem
+$miPos.IsCheckable = $true
 $miClose = New-Object Windows.Controls.MenuItem
 
 function Apply-Refresh([string]$key) {
@@ -741,6 +756,7 @@ function Apply-Language {
     $miAuto.Header    = T 'menu.autostart'
     $miLang.Header    = T 'menu.language'
     $miRefresh.Header = T 'menu.refresh'
+    $miPos.Header     = T 'menu.rememberpos'
     $miClose.Header   = T 'menu.close'
     foreach ($it in $miLang.Items) { $it.IsChecked = ($it.Tag -eq $script:Lang) }
     foreach ($it in $miRefresh.Items) { $it.Header = T ('refresh.' + $it.Tag) }
@@ -749,6 +765,7 @@ function Apply-Language {
         $tiAuto.Text    = T 'menu.autostart'
         $tiLang.Text    = T 'menu.language'
         $tiRefresh.Text = T 'menu.refresh'
+        $tiPos.Text     = T 'menu.rememberpos'
         $tiExit.Text    = T 'menu.exit'
         $tiShow.Text    = T 'menu.show'
         foreach ($it in $tiRefresh.DropDownItems) { $it.Text = T ('refresh.' + $it.Tag) }
@@ -793,13 +810,26 @@ foreach ($r in $RefreshPresets) {
 }
 $menu.Items.Add($miRefresh) | Out-Null
 
+$miPos.Add_Click({
+    $script:RememberPos = [bool]$miPos.IsChecked
+    $script:State['rememberPos'] = $script:RememberPos
+    Save-State $script:State
+    # Switching it back on should keep where the widget is standing right now, not whatever
+    # stale position happened to be left in the file.
+    if ($script:RememberPos) { Save-Position }
+}.GetNewClosure())
+$menu.Items.Add($miPos) | Out-Null
+
 $menu.Items.Add((New-Object Windows.Controls.Separator)) | Out-Null
 $miClose.Add_Click({ Hide-Widget }.GetNewClosure())
 $menu.Items.Add($miClose) | Out-Null
 
 # Read the tick from the registry every time the menu opens, never from a remembered
 # variable: an entry removed from outside would otherwise still show as ticked.
-$menu.Add_Opened({ $miAuto.IsChecked = Get-AutostartEnabled }.GetNewClosure())
+$menu.Add_Opened({
+    $miAuto.IsChecked = Get-AutostartEnabled
+    $miPos.IsChecked = $script:RememberPos
+}.GetNewClosure())
 $window.ContextMenu = $menu
 
 # ---------- notification area ----------
@@ -813,8 +843,7 @@ function Show-Widget {
     $window.Activate()
 }
 function Hide-Widget {
-    # Save the position on the way out — the window may never be "closed" again.
-    try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}
+    Save-Position
     $window.Hide()
 }
 function Exit-Widget {
@@ -830,8 +859,16 @@ $tiLang    = New-Object System.Windows.Forms.ToolStripMenuItem
 $tiRefresh = New-Object System.Windows.Forms.ToolStripMenuItem
 $trayMenu.Items.Add($tiLang) | Out-Null
 $trayMenu.Items.Add($tiRefresh) | Out-Null
+$tiPos     = $trayMenu.Items.Add("Remember position")
 $trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $tiExit    = $trayMenu.Items.Add("Exit")
+
+$tiPos.Add_Click({
+    $script:RememberPos = -not $script:RememberPos
+    $script:State['rememberPos'] = $script:RememberPos
+    Save-State $script:State
+    if ($script:RememberPos) { Save-Position }
+})
 
 $tiShow.Add_Click({ Show-Widget })
 $tiExit.Add_Click({ Exit-Widget })
@@ -866,6 +903,7 @@ foreach ($r in $RefreshPresets) {
 # Both menus read the truth when they open, never a remembered flag.
 $trayMenu.Add_Opening({
     $tiAuto.Checked = Get-AutostartEnabled
+    $tiPos.Checked = $script:RememberPos
     $tiShow.Text = if ($window.IsVisible) { T 'menu.close' } else { T 'menu.show' }
     foreach ($it in $tiLang.DropDownItems)    { $it.Checked = ($it.Tag -eq $script:Lang) }
     foreach ($it in $tiRefresh.DropDownItems) { $it.Checked = ($it.Tag -eq $script:Refresh) }
@@ -903,18 +941,31 @@ $MenuBtn.Add_MouseLeftButtonDown({
 
 $wa = [System.Windows.SystemParameters]::WorkArea
 $window.Left = $wa.Right - 330; $window.Top = $wa.Top + 12
-if (Test-Path $PosFile) {
+if ($script:RememberPos -and (Test-Path $PosFile)) {
     try {
         $p = (Get-Content $PosFile -Raw) -split ','
         $l = [double]$p[0]; $t = [double]$p[1]
-        if ($l -gt $wa.Left - 50 -and $l -lt $wa.Right -and $t -ge $wa.Top -and $t -lt $wa.Bottom) {
+        # Checked against the WHOLE desktop, not the primary monitor. WorkArea covers the
+        # primary screen only, so a widget parked on a second monitor failed the test and was
+        # silently dropped back into the default corner — the position had been saved
+        # correctly all along, and then thrown away on the way back in.
+        $vL = [System.Windows.SystemParameters]::VirtualScreenLeft
+        $vT = [System.Windows.SystemParameters]::VirtualScreenTop
+        $vR = $vL + [System.Windows.SystemParameters]::VirtualScreenWidth
+        $vB = $vT + [System.Windows.SystemParameters]::VirtualScreenHeight
+        # A little tolerance at the edges: a window nudged slightly off-screen is still a
+        # position the user chose. Far outside it is a monitor that no longer exists.
+        if ($l -gt ($vL - 50) -and $l -lt ($vR - 40) -and $t -gt ($vT - 20) -and $t -lt ($vB - 40)) {
             $window.Left = $l; $window.Top = $t
+        } else {
+            Write-Log "saved position $l,$t is outside the current desktop - using the default corner"
         }
     } catch {}
 }
-$window.Add_MouseLeftButtonDown({ try { $window.DragMove() } catch {} })
+# DragMove blocks until the drag ends, so this is the moment the position is final.
+$window.Add_MouseLeftButtonDown({ try { $window.DragMove(); Save-Position } catch {} })
 $window.Add_Closed({
-    try { "$($window.Left),$($window.Top)" | Set-Content $PosFile } catch {}
+    Save-Position
     Save-ModelMax
     # Whichever way the window ends, the tray icon must go with it — an orphaned icon sits
     # in the notification area until the mouse happens to brush it.

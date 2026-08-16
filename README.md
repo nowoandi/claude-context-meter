@@ -59,6 +59,11 @@ either way. Double-clicking the tray icon shows or hides the window.
 - **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
   recursive rescan are stretched together, because the rescan is the expensive half;
   slowing only the tick would keep the cost and lose the freshness.
+- **Remember position** — on by default. The position is written the moment you finish
+  dragging, not on exit: a widget that is killed rather than closed would otherwise lose
+  where you put it every single time. It is validated against the whole desktop, so a spot
+  on a second monitor — including one to the left of the primary, where the coordinates go
+  negative — survives a restart.
 
 The widget runs at `BelowNormal` priority, so it gets the processor only when nothing else
 wants it. Together with the refresh setting that is the honest version of "keep it off my
