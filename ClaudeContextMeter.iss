@@ -6,10 +6,12 @@
 ; user, and nothing it does warrants an elevation prompt.
 
 #define AppName      "Claude Context Meter"
-#define AppVersion   "1.1.0"
+#define AppVersion   "1.1.1"
 #define AppPublisher "nowoandi"
 #define AppURL       "https://github.com/nowoandi/claude-context-meter"
-#define AppExeName   "Start-ContextMeter.bat"
+; The .vbs, not the .bat: it starts PowerShell with the console hidden from creation, so
+; nothing flashes on screen. The .bat now only forwards to it and stays for old shortcuts.
+#define AppExeName   "Start-ContextMeter.vbs"
 
 [Setup]
 AppId={{7C1F4E92-3A6D-4B58-9E0C-2D5A8F14B7C3}
@@ -43,6 +45,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Files]
 Source: "ClaudeContextMeter.ps1";   DestDir: "{app}"; Flags: ignoreversion
+Source: "Start-ContextMeter.vbs";   DestDir: "{app}"; Flags: ignoreversion
 Source: "Start-ContextMeter.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "ClaudeContextMeter.ico";   DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md";                DestDir: "{app}"; Flags: ignoreversion

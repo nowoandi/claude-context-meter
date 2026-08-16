@@ -39,8 +39,14 @@ shown next to each total.
 powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ClaudeContextMeter.ps1
 ```
 
-Or double-click `Start-ContextMeter.bat`. A shortcut with the app icon is easy to make:
-point it at the `.bat` and set its icon to `ClaudeContextMeter.ico`.
+Better, double-click **`Start-ContextMeter.vbs`**. `powershell.exe` is a console
+application, so Windows gives it a console window even though this script only ever shows a
+WPF window, and `-WindowStyle Hidden` hides that console only after it exists — which is
+what makes a black window flash on every start. The `.vbs` creates it hidden from the
+outset, so nothing appears. `Start-ContextMeter.bat` still works and simply forwards to it.
+
+A shortcut with the app icon is easy to make: point it at the `.vbs` and set its icon to
+`ClaudeContextMeter.ico`.
 
 Drag the widget anywhere — it remembers where you put it. `✕` hides it; it keeps running
 and comes back from the tray icon. Only **Exit** in the tray menu really ends it.

@@ -228,8 +228,20 @@ $RunValueName = "ClaudeContextMeter"
 # Derived from where this script actually lies, never hard-coded. On 15.08.2026 the widget
 # was moved to its own folder and both autostart entries kept pointing at the old path —
 # they had the location baked in. Anything built from $PSCommandPath survives the next move.
-function Get-AutostartArgs {
-    return '-STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+# Launched through the .vbs whenever it is there. powershell.exe is a console application
+# and Windows gives it a console window even though this script only ever shows a WPF
+# window; -WindowStyle Hidden hides that console only AFTER it exists, so a black window
+# flashes at every logon. WScript.Shell.Run with show = 0 creates it hidden from the start.
+# The direct fallback keeps a bare .ps1 working for anyone who copied only that file.
+function Get-AutostartLauncher {
+    $vbs = Join-Path (Split-Path -Parent $PSCommandPath) 'Start-ContextMeter.vbs'
+    if (Test-Path $vbs) {
+        return @{ Exe = (Join-Path $env:WINDIR 'System32\wscript.exe'); Args = ('"' + $vbs + '"') }
+    }
+    return @{
+        Exe  = (Join-Path $PSHOME 'powershell.exe')
+        Args = ('-STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"')
+    }
 }
 
 function Get-AutostartEnabled {
@@ -243,7 +255,8 @@ function Get-AutostartEnabled {
 function Set-AutostartEnabled([bool]$enabled) {
     try {
         if ($enabled) {
-            $act = New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument (Get-AutostartArgs)
+            $l = Get-AutostartLauncher
+            $act = New-ScheduledTaskAction -Execute $l.Exe -Argument $l.Args
             # At logon, once. There was briefly a 15-minute repetition here as a watchdog,
             # and it was the wrong answer twice over: a widget that is restarted every
             # quarter of an hour hides the defect that killed it, and it shoulders its way
@@ -270,8 +283,9 @@ function Sync-AutostartPath {
     if (-not (Get-AutostartEnabled)) { return }
     try {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-        $cur = ($task.Actions | Select-Object -First 1).Arguments
-        if ($cur -ne (Get-AutostartArgs)) {
+        $act = $task.Actions | Select-Object -First 1
+        $l = Get-AutostartLauncher
+        if ($act.Arguments -ne $l.Args -or $act.Execute -ne $l.Exe) {
             $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" }
             Write-Log "autostart path updated"
         }
@@ -365,7 +379,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.1.0'
+$Version   = '1.1.1'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
