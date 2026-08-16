@@ -3,8 +3,6 @@
 # Footer: total token throughput for the rate-limit windows (5 hours / 7 days), all sessions incl. subagents.
 # Local files only, no network. Run: powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ClaudeContextMeter.ps1
 
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-
 # ---------- diagnostics ----------
 # The log is opened before anything else can fail, and it APPENDS.
 #
@@ -16,15 +14,42 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 # on, unlogged). Overwriting on top of that meant every restart destroyed the evidence of
 # the run that had just died. A widget that can disappear without a line in its own log
 # cannot be debugged at all.
-$DbgLog = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.log"
+# The log path is PROVEN writable at startup, not assumed. A widget started by the
+# scheduled task on 16.08.2026 ran perfectly — window up, priority applied, every line of
+# code past the logging calls executed — and wrote nothing at all, while an identical probe
+# task wrote to the same file without trouble. Rather than keep guessing which host detail
+# swallowed it, the log now tries candidates in order and keeps the first that accepts a
+# write. Which one won is the first thing it records, so the next mystery starts with a
+# known file instead of a suspected one.
+$DbgLog = $null
+foreach ($cand in @(
+    (Join-Path $env:LOCALAPPDATA 'ClaudeContextMeter.log'),
+    (Join-Path $env:TEMP 'ClaudeContextMeter.log'),
+    (Join-Path (Split-Path -Parent $PSCommandPath) 'ClaudeContextMeter.log')
+)) {
+    if (-not $cand) { continue }
+    try {
+        [System.IO.File]::AppendAllText($cand, '', [System.Text.Encoding]::UTF8)
+        $DbgLog = $cand
+        break
+    } catch {}
+}
 
 function Write-Log([string]$text) {
+    # Raw .NET, not Add-Content. Add-Content goes through the PowerShell file provider, and
+    # on 16.08.2026 a widget launched by the scheduled task wrote NOT ONE line through it —
+    # window up, priority applied, everything past the logging calls working — while an
+    # otherwise identical probe task wrote to the same file without trouble. Whatever the
+    # provider objected to in that host, AppendAllText does not care: it is one open, one
+    # write, one close, with no provider and no PSDrive involved.
+    #
     # Logging must never take the widget down, and must not lose a line to a race with a
-    # second copy: a few short retries cover the moment the file is held elsewhere.
+    # second copy, so failures are retried briefly and then swallowed.
+    if (-not $DbgLog) { return }
+    $line = "{0}  [{1}]  {2}{3}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $PID, $text, [Environment]::NewLine
     for ($i = 0; $i -lt 5; $i++) {
         try {
-            $line = "{0}  [{1}]  {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $PID, $text
-            Add-Content -Path $DbgLog -Value $line -Encoding UTF8 -ErrorAction Stop
+            [System.IO.File]::AppendAllText($DbgLog, $line, [System.Text.Encoding]::UTF8)
             return
         } catch { Start-Sleep -Milliseconds 40 }
     }
@@ -36,7 +61,7 @@ try {
     }
 } catch {}
 
-Write-Log "---- start | script: $PSCommandPath"
+Write-Log "---- start | script: $PSCommandPath | log: $DbgLog"
 trap { Write-Log ("TRAP: " + ($_ | Out-String).Trim()); break }
 
 # single instance guard.
@@ -52,7 +77,12 @@ try {
     $free = $true
     Write-Log "mutex was abandoned - the previous instance did not exit cleanly"
 }
-if (-not $free) { Write-Log "another instance already holds the mutex - exiting"; exit }
+if (-not $free) { Write-Log "already running - watchdog start exits here"; exit }
+
+# Loading WPF costs the better part of a second, so it happens AFTER the guard: the
+# autostart task restarts the widget every 15 minutes as a watchdog, and 95 of those 96
+# daily starts find a widget already running. They must be as close to free as possible.
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
 $ProjectsDir = Join-Path $env:USERPROFILE ".claude\projects"
 $CoworkVmDir = Join-Path $env:APPDATA "Claude\local-agent-mode-sessions"
@@ -133,6 +163,7 @@ using System.Runtime.InteropServices;
 public class CcmWin {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
 }
 "@
 
@@ -150,7 +181,13 @@ function Focus-Claude {
     try {
         $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq 'Claude' } | Select-Object -First 1
         if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
-            [CcmWin]::ShowWindowAsync($p.MainWindowHandle, 9) | Out-Null
+            # SW_RESTORE (9) only when the window is actually minimised. Sending it
+            # unconditionally was a bug: on a MAXIMISED window, restore means "come back
+            # down to the previous size", so every click on a row un-maximised the Claude
+            # window and it appeared to jump to a different format. Reported 16.08.2026.
+            if ([CcmWin]::IsIconic($p.MainWindowHandle)) {
+                [CcmWin]::ShowWindowAsync($p.MainWindowHandle, 9) | Out-Null
+            }
             [CcmWin]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
         }
     } catch {}
@@ -170,50 +207,69 @@ function Focus-Claude {
 #    deleting an unrelated program's autostart.
 #  * Missing APPDATA must not fall back to a cwd-relative path: that would resolve to
 #    wherever the process happened to be started from.
+#
+# Why a scheduled task and not the HKCU Run key, which is what this used to be:
+# a Run entry fires at logon and never again. This machine is not rebooted — it sleeps and
+# wakes, and modern standby is not a logon. Measured on 16.08.2026: the Run entry had been
+# in place for 26 hours and had never once executed, because the last logon predated it.
+# Docker Desktop and Yandex Disk, also Run entries, were still the instances started at that
+# same old logon. So "autostart is configured" and "the widget comes back" were not the same
+# statement at all. One task with a logon trigger AND a 15-minute repetition is still ONE
+# mechanism, but it also brings the widget back after a crash or a kill, without waiting for
+# a reboot that may be weeks away.
+$TaskName     = "ClaudeContextMeter"
 $RunKey       = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run"
 $RunValueName = "ClaudeContextMeter"
-$LegacyTask   = "ClaudeContextMeter"
 
 # Derived from where this script actually lies, never hard-coded. On 15.08.2026 the widget
 # was moved to its own folder and both autostart entries kept pointing at the old path —
 # they had the location baked in. Anything built from $PSCommandPath survives the next move.
-function Get-AutostartCommand {
-    $exe = Join-Path $PSHOME 'powershell.exe'
-    return '"' + $exe + '" -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+function Get-AutostartArgs {
+    return '-STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
 }
 
 function Get-AutostartEnabled {
     try {
-        $v = Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction Stop
-        return $null -ne $v.$RunValueName
+        return $null -ne (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
     } catch { return $false }
 }
 
-# Returns $null on success or the error text — never throws, so a locked-down registry
+# Returns $null on success or the error text — never throws, so a locked-down machine
 # cannot take the whole widget down with it.
 function Set-AutostartEnabled([bool]$enabled) {
     try {
         if ($enabled) {
-            if (-not (Test-Path $RunKey)) { New-Item -Path $RunKey -Force | Out-Null }
-            Set-ItemProperty -Path $RunKey -Name $RunValueName -Value (Get-AutostartCommand) -ErrorAction Stop
+            $act = New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument (Get-AutostartArgs)
+            # At logon, once. There was briefly a 15-minute repetition here as a watchdog,
+            # and it was the wrong answer twice over: a widget that is restarted every
+            # quarter of an hour hides the defect that killed it, and it shoulders its way
+            # back onto the screen on days when Claude is not even running. If the widget
+            # dies, that is a bug to find, not a thing to paper over.
+            $trg = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+            $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                        -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+            $prn = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
+            Register-ScheduledTask -TaskName $TaskName -Action $act -Trigger $trg -Settings $set -Principal $prn -Force -ErrorAction Stop | Out-Null
+            Write-Log "autostart task registered -> $PSCommandPath"
         } else {
-            Remove-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+            Write-Log "autostart task removed"
         }
         return $null
     } catch { return $_.Exception.Message }
 }
 
-# The stored command carries an absolute path, so it goes stale the moment the folder moves.
-# Rewrite it silently when it no longer matches — but only while autostart is switched on,
+# The task carries an absolute path, so it goes stale the moment the folder moves.
+# Re-register silently when it no longer matches — but only while autostart is switched on,
 # so this never turns it back on behind the user's back.
 function Sync-AutostartPath {
     if (-not (Get-AutostartEnabled)) { return }
     try {
-        $cur = (Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction Stop).$RunValueName
-        $want = Get-AutostartCommand
-        if ($cur -ne $want) {
-            Set-ItemProperty -Path $RunKey -Name $RunValueName -Value $want -ErrorAction Stop
-            Write-Log "autostart path updated -> $want"
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+        $cur = ($task.Actions | Select-Object -First 1).Arguments
+        if ($cur -ne (Get-AutostartArgs)) {
+            $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" }
+            Write-Log "autostart path updated"
         }
     } catch {}
 }
@@ -242,7 +298,7 @@ function Save-State($h) {
 # run forever, because it only ever matters on a machine set up before this existed.
 function Invoke-AutostartMigration {
     $state = Load-State
-    if ($state['legacyAutostartMigrated']) { return }
+    if ($state['autostartTaskMigrated']) { return }
 
     $found = $false
 
@@ -255,7 +311,7 @@ function Invoke-AutostartMigration {
                 $sc = $sh.CreateShortcut($lnk)
                 if ($sc.Arguments -like '*ClaudeContextMeter.ps1*') {
                     $found = $true
-                    if (-not (Get-AutostartEnabled)) { Set-AutostartEnabled $true | Out-Null }
+                    if (-not (Get-AutostartEnabled)) { $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" } }
                     if (Get-AutostartEnabled) {
                         Remove-Item $lnk -Force -ErrorAction SilentlyContinue
                         Write-Log "legacy startup shortcut removed"
@@ -265,25 +321,24 @@ function Invoke-AutostartMigration {
         }
     }
 
-    # 2. Scheduled task - same evidence rule.
+    # 2. Run-key entry - same evidence rule. This is the mechanism the widget itself used
+    #    until 16.08.2026; it is removed only once the task has taken over, so a machine is
+    #    never left with no autostart at all because one half of the swap failed.
     try {
-        $task = Get-ScheduledTask -TaskName $LegacyTask -ErrorAction SilentlyContinue
-        if ($task) {
-            $mine = @($task.Actions | Where-Object { $_.Arguments -like '*ClaudeContextMeter.ps1*' })
-            if ($mine.Count -gt 0) {
-                $found = $true
-                if (-not (Get-AutostartEnabled)) { Set-AutostartEnabled $true | Out-Null }
-                if (Get-AutostartEnabled) {
-                    Unregister-ScheduledTask -TaskName $LegacyTask -Confirm:$false -ErrorAction SilentlyContinue
-                    Write-Log "legacy scheduled task removed"
-                }
+        $cur = (Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
+        if ($cur -and $cur -like '*ClaudeContextMeter.ps1*') {
+            $found = $true
+            if (-not (Get-AutostartEnabled)) { $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" } }
+            if (Get-AutostartEnabled) {
+                Remove-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue
+                Write-Log "legacy Run-key entry removed"
             }
         }
     } catch {}
 
     # Only close the migration once nothing legacy is left; otherwise retry next launch.
     if (-not $found -or (Get-AutostartEnabled)) {
-        $state['legacyAutostartMigrated'] = $true
+        $state['autostartTaskMigrated'] = $true
         Save-State $state
     }
 }
