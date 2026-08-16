@@ -101,6 +101,11 @@ $TitleDirs   = @(
 $PosFile     = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.pos"
 $ModelsFile  = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.models.json"
 $StateFile   = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.state.json"
+# Last-alive marker, rewritten every ~30 s. The heartbeat in the log runs every ten minutes,
+# which is fine for spotting a leak but leaves an eleven-minute window around a death — far
+# too wide to line up against anything in the Windows event logs. This narrows it to half a
+# minute, which is narrow enough to ask "what else happened at that second".
+$PulseFile   = Join-Path $env:LOCALAPPDATA "ClaudeContextMeter.alive"
 # Nothing on disk states which context window a chat runs on, so the widget decides for
 # itself: it remembers the largest prompt it has ever seen per model, and a model caught
 # above the small window is filed as large from then on — across restarts. This assumption
@@ -830,6 +835,24 @@ $window.Dispatcher.Add_UnhandledException({
     Write-Log ("FATAL: " + $e.ExceptionObject.ToString())
 })
 
+# Windows tells applications when the session is ending, when it is locked or switched, and
+# when the machine suspends or resumes. Two disappearances left no exception, no crash
+# record and flat memory, which points away from the widget failing and towards something
+# ending it. If any of these fire just before the log goes quiet, that is the answer;
+# if the log stops without one, the cause is outside Windows' own notifications and the
+# search moves on. Recording them costs nothing and rules out a whole family of theories.
+try {
+    [Microsoft.Win32.SystemEvents]::add_SessionEnding({ param($s, $e) Write-Log ("SYSTEM: session ending, reason " + $e.Reason) })
+    [Microsoft.Win32.SystemEvents]::add_SessionEnded({  param($s, $e) Write-Log ("SYSTEM: session ended, reason " + $e.Reason) })
+    [Microsoft.Win32.SystemEvents]::add_SessionSwitch({ param($s, $e) Write-Log ("SYSTEM: session switch, " + $e.Reason) })
+    [Microsoft.Win32.SystemEvents]::add_PowerModeChanged({ param($s, $e) Write-Log ("SYSTEM: power mode " + $e.Mode) })
+    [Microsoft.Win32.SystemEvents]::add_DisplaySettingsChanged({ Write-Log "SYSTEM: display settings changed" })
+} catch { Write-Log ("could not subscribe to system events: " + $_.Exception.Message) }
+
+# Fires when something asks WPF to shut down, which separates "an orderly shutdown was
+# requested" from "the process was terminated under it".
+$window.Dispatcher.Add_ShutdownStarted({ Write-Log "dispatcher shutdown started" })
+
 $RowsPanel = $window.FindName("RowsPanel")
 $Sum5      = $window.FindName("Sum5")
 $Sum7      = $window.FindName("Sum7")
@@ -1422,6 +1445,12 @@ function Invoke-Tick {
 
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
+
+    # Last-alive marker. One tiny write every ten ticks - cheap, and it is what pins the
+    # moment of a disappearance to half a minute instead of eleven.
+    if (($script:TickNo % 10) -eq 0) {
+        try { [System.IO.File]::WriteAllText($PulseFile, (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + " pid=$PID") } catch { }
+    }
 
     # Collect the update check when its runspace is done. Polled rather than awaited, so a
     # slow or hanging request costs nothing here.
