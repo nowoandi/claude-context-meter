@@ -347,6 +347,120 @@ function Invoke-AutostartMigration {
     }
 }
 
+# ---------- updates ----------
+# Modelled on WinDictoo's update.py and oldversions.py, which between them encode four
+# lessons this widget would otherwise have to learn the same way:
+#
+#  * An update check must NEVER break the start. Offline, rate-limited, no release, no
+#    asset, garbage JSON — every one of them ends as "no update", not as an exception.
+#  * Compare versions as numbers, not as text: "1.10.0" is newer than "1.9.0" and string
+#    comparison says the opposite. Anything unparseable means no update rather than a guess.
+#  * A release without an installer asset is not an update. Offering one would send the user
+#    to a page with nothing on it.
+#  * Old installs do not clean themselves up. Each rename of WinDictoo used a fresh Inno
+#    AppId so the previous uninstaller kept working — and nothing ever ran it, so upgraded
+#    machines collected two or three Start Menu entries. The list below is the hook for
+#    that; it is empty because this project has not been renamed, and the current AppId
+#    must never be added to it.
+#
+# The check also breaks the "no network at all" promise this widget used to make, so it is
+# a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
+$Version   = '1.1.0'
+$Repo      = 'nowoandi/claude-context-meter'
+$OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
+
+$script:UpdateInfo   = $null
+$script:UpdatePS     = $null
+$script:UpdateHandle = $null
+
+function Test-NewerVersion([string]$remote, [string]$current) {
+    try {
+        $r = ($remote  -replace '^[vV]','').Split('.') | ForEach-Object { [int]$_ }
+        $c = ($current -replace '^[vV]','').Split('.') | ForEach-Object { [int]$_ }
+    } catch { return $false }
+    for ($i = 0; $i -lt [Math]::Max($r.Count, $c.Count); $i++) {
+        $rv = if ($i -lt $r.Count) { $r[$i] } else { 0 }
+        $cv = if ($i -lt $c.Count) { $c[$i] } else { 0 }
+        if ($rv -gt $cv) { return $true }
+        if ($rv -lt $cv) { return $false }
+    }
+    return $false
+}
+
+# Runs in its own runspace: a six-second wait on a rate-limited API must not freeze a
+# widget whose whole job is to redraw every few seconds.
+function Start-UpdateCheck {
+    if (-not $script:CheckUpdates -or $script:UpdatePS) { return }
+    try {
+        $script:UpdatePS = [PowerShell]::Create()
+        [void]$script:UpdatePS.AddScript({
+            param($repo)
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $r = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" `
+                        -Headers @{ 'User-Agent' = 'ClaudeContextMeter' } -TimeoutSec 8
+                $asset = @($r.assets | Where-Object { $_.name -like '*.exe' })[0]
+                if (-not $asset) { return }
+                [PSCustomObject]@{
+                    Version = ($r.tag_name -replace '^[vV]','')
+                    Url     = $asset.browser_download_url
+                    Page    = $r.html_url
+                }
+            } catch { }
+        }).AddArgument($Repo)
+        $script:UpdateHandle = $script:UpdatePS.BeginInvoke()
+    } catch { $script:UpdatePS = $null }
+}
+
+function Complete-UpdateCheck {
+    if (-not $script:UpdateHandle -or -not $script:UpdateHandle.IsCompleted) { return }
+    try {
+        $res = @($script:UpdatePS.EndInvoke($script:UpdateHandle))[0]
+        if ($res -and (Test-NewerVersion $res.Version $Version)) {
+            $script:UpdateInfo = $res
+            Write-Log ("update available: {0} (running {1})" -f $res.Version, $Version)
+        }
+    } catch { }
+    try { $script:UpdatePS.Dispose() } catch { }
+    $script:UpdatePS = $null
+    $script:UpdateHandle = $null
+}
+
+# Download, then hand over to the installer and step aside. The installer knows this widget
+# is running because it shares the single-instance mutex, so it asks for it to be closed
+# rather than writing over a file in use.
+function Install-Update {
+    if (-not $script:UpdateInfo) { return }
+    $info = $script:UpdateInfo
+    try {
+        $dest = Join-Path $env:TEMP ("ClaudeContextMeter-{0}-setup.exe" -f $info.Version)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $info.Url -OutFile $dest -UseBasicParsing -TimeoutSec 180
+        Write-Log "update downloaded to $dest - starting installer"
+        Start-Process -FilePath $dest
+    } catch {
+        Write-Log ("update download failed: " + $_.Exception.Message)
+        try { Start-Process $info.Page } catch { }
+    }
+}
+
+# The counterpart to WinDictoo's oldversions.py. A no-op today, and deliberately so: the
+# mechanism has to exist before the rename that needs it, because after the rename the new
+# build is the only thing that could clean up — and it would have to know what to look for.
+function Remove-OldInstalls {
+    foreach ($old in $OldAppIds) {
+        try {
+            $key = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($old.AppId)_is1"
+            $u = (Get-ItemProperty -Path $key -Name UninstallString -ErrorAction Stop).UninstallString
+            if ($u) {
+                $exe = $u.Trim('"')
+                Start-Process -FilePath $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -ErrorAction Stop
+                Write-Log "removing leftover install of $($old.Name)"
+            }
+        } catch { }
+    }
+}
+
 # ---------- interface language ----------
 # Same shape as WinDictoo's i18n.py: one table keyed by "namespace.key", one entry per
 # language, a single current-language variable, and a fallback to the default whenever a
@@ -374,6 +488,8 @@ $Strings = @{
     'menu.language'   = @{ ru = 'Язык';               en = 'Language' }
     'menu.refresh'    = @{ ru = 'Частота обновления'; en = 'Refresh rate' }
     'menu.rememberpos'= @{ ru = 'Запоминать положение'; en = 'Remember position' }
+    'menu.updates'    = @{ ru = 'Проверять обновления'; en = 'Check for updates' }
+    'menu.update'     = @{ ru = 'Обновить до {0}';      en = 'Update to {0}' }
     'refresh.normal'  = @{ ru = 'Обычная';            en = 'Normal' }
     'refresh.easy'    = @{ ru = 'Экономная';          en = 'Easy' }
     'refresh.low'     = @{ ru = 'Минимальная';        en = 'Minimal' }
@@ -711,6 +827,10 @@ if ($script:State['lang'] -and ($UiLangs.Code -contains $script:State['lang'])) 
 # behaviour, not a feature to opt into.
 $script:RememberPos = $true
 if ($script:State.ContainsKey('rememberPos')) { $script:RememberPos = [bool]$script:State['rememberPos'] }
+# On by default, but switchable and stated in the README: this is the one thing the widget
+# does that leaves the machine at all.
+$script:CheckUpdates = $true
+if ($script:State.ContainsKey('checkUpdates')) { $script:CheckUpdates = [bool]$script:State['checkUpdates'] }
 
 # Written whenever the window is moved, not only when it is closed. Saving on exit alone
 # meant a widget that was killed rather than closed — which is exactly how this one kept
@@ -731,6 +851,12 @@ $miLang = New-Object Windows.Controls.MenuItem
 $miRefresh = New-Object Windows.Controls.MenuItem
 $miPos = New-Object Windows.Controls.MenuItem
 $miPos.IsCheckable = $true
+$miUpd = New-Object Windows.Controls.MenuItem
+$miUpd.IsCheckable = $true
+# Only appears once there is something to install — a permanently greyed "no updates" line
+# is noise in a menu this small.
+$miDoUpd = New-Object Windows.Controls.MenuItem
+$miDoUpd.Visibility = 'Collapsed'
 $miClose = New-Object Windows.Controls.MenuItem
 
 function Apply-Refresh([string]$key) {
@@ -757,6 +883,7 @@ function Apply-Language {
     $miLang.Header    = T 'menu.language'
     $miRefresh.Header = T 'menu.refresh'
     $miPos.Header     = T 'menu.rememberpos'
+    $miUpd.Header     = T 'menu.updates'
     $miClose.Header   = T 'menu.close'
     foreach ($it in $miLang.Items) { $it.IsChecked = ($it.Tag -eq $script:Lang) }
     foreach ($it in $miRefresh.Items) { $it.Header = T ('refresh.' + $it.Tag) }
@@ -766,6 +893,7 @@ function Apply-Language {
         $tiLang.Text    = T 'menu.language'
         $tiRefresh.Text = T 'menu.refresh'
         $tiPos.Text     = T 'menu.rememberpos'
+        $tiUpd.Text     = T 'menu.updates'
         $tiExit.Text    = T 'menu.exit'
         $tiShow.Text    = T 'menu.show'
         foreach ($it in $tiRefresh.DropDownItems) { $it.Text = T ('refresh.' + $it.Tag) }
@@ -810,6 +938,17 @@ foreach ($r in $RefreshPresets) {
 }
 $menu.Items.Add($miRefresh) | Out-Null
 
+$miUpd.Add_Click({
+    $script:CheckUpdates = [bool]$miUpd.IsChecked
+    $script:State['checkUpdates'] = $script:CheckUpdates
+    Save-State $script:State
+    if ($script:CheckUpdates) { Start-UpdateCheck }
+}.GetNewClosure())
+$menu.Items.Add($miUpd) | Out-Null
+
+$miDoUpd.Add_Click({ Install-Update }.GetNewClosure())
+$menu.Items.Add($miDoUpd) | Out-Null
+
 $miPos.Add_Click({
     $script:RememberPos = [bool]$miPos.IsChecked
     $script:State['rememberPos'] = $script:RememberPos
@@ -829,6 +968,13 @@ $menu.Items.Add($miClose) | Out-Null
 $menu.Add_Opened({
     $miAuto.IsChecked = Get-AutostartEnabled
     $miPos.IsChecked = $script:RememberPos
+    $miUpd.IsChecked = $script:CheckUpdates
+    if ($script:UpdateInfo) {
+        $miDoUpd.Header = (T 'menu.update') -f $script:UpdateInfo.Version
+        $miDoUpd.Visibility = 'Visible'
+    } else {
+        $miDoUpd.Visibility = 'Collapsed'
+    }
 }.GetNewClosure())
 $window.ContextMenu = $menu
 
@@ -860,8 +1006,19 @@ $tiRefresh = New-Object System.Windows.Forms.ToolStripMenuItem
 $trayMenu.Items.Add($tiLang) | Out-Null
 $trayMenu.Items.Add($tiRefresh) | Out-Null
 $tiPos     = $trayMenu.Items.Add("Remember position")
+$tiUpd     = $trayMenu.Items.Add("Check for updates")
+$tiDoUpd   = $trayMenu.Items.Add("Update")
+$tiDoUpd.Visible = $false
 $trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $tiExit    = $trayMenu.Items.Add("Exit")
+
+$tiUpd.Add_Click({
+    $script:CheckUpdates = -not $script:CheckUpdates
+    $script:State['checkUpdates'] = $script:CheckUpdates
+    Save-State $script:State
+    if ($script:CheckUpdates) { Start-UpdateCheck }
+})
+$tiDoUpd.Add_Click({ Install-Update })
 
 $tiPos.Add_Click({
     $script:RememberPos = -not $script:RememberPos
@@ -904,6 +1061,13 @@ foreach ($r in $RefreshPresets) {
 $trayMenu.Add_Opening({
     $tiAuto.Checked = Get-AutostartEnabled
     $tiPos.Checked = $script:RememberPos
+    $tiUpd.Checked = $script:CheckUpdates
+    if ($script:UpdateInfo) {
+        $tiDoUpd.Text = (T 'menu.update') -f $script:UpdateInfo.Version
+        $tiDoUpd.Visible = $true
+    } else {
+        $tiDoUpd.Visible = $false
+    }
     $tiShow.Text = if ($window.IsVisible) { T 'menu.close' } else { T 'menu.show' }
     foreach ($it in $tiLang.DropDownItems)    { $it.Checked = ($it.Tag -eq $script:Lang) }
     foreach ($it in $tiRefresh.DropDownItems) { $it.Checked = ($it.Tag -eq $script:Refresh) }
@@ -1220,6 +1384,10 @@ function Invoke-Tick {
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
 
+    # Collect the update check when its runspace is done. Polled rather than awaited, so a
+    # slow or hanging request costs nothing here.
+    Complete-UpdateCheck
+
     # A heartbeat with the numbers that would explain a slow death — memory, handles, how
     # many logs are being tracked. Every ~10 minutes, so the log stays readable while still
     # showing whether the widget grows over a long session.
@@ -1254,6 +1422,8 @@ $timer.Start()
 # autostart.
 try { Invoke-AutostartMigration } catch { Write-Log ("migration failed: " + ($_ | Out-String).Trim()) }
 try { Sync-AutostartPath } catch { Write-Log ("path sync failed: " + ($_ | Out-String).Trim()) }
+try { Remove-OldInstalls } catch { Write-Log ("old install cleanup failed: " + ($_ | Out-String).Trim()) }
+try { Start-UpdateCheck } catch { Write-Log ("update check could not start: " + ($_ | Out-String).Trim()) }
 
 # The widget spends its life idling and re-reading logs. BelowNormal means it gets the
 # processor only when nothing else wants it — the honest version of "put it on a spare

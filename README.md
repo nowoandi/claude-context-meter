@@ -59,6 +59,10 @@ either way. Double-clicking the tray icon shows or hides the window.
 - **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
   recursive rescan are stretched together, because the rescan is the expensive half;
   slowing only the tick would keep the cost and lose the freshness.
+- **Check for updates** — on by default. Asks GitHub once at startup whether a newer
+  release exists; if there is one, an **Update to x.y.z** line appears in both menus and
+  downloads the installer. Every failure — offline, rate-limited, no release, no installer
+  attached — is simply "no update": a version check must never be able to break the start.
 - **Remember position** — on by default. The position is written the moment you finish
   dragging, not on exit: a widget that is killed rather than closed would otherwise lose
   where you put it every single time. It is validated against the whole desktop, so a spot
@@ -104,8 +108,12 @@ Everything is read from files Claude already writes locally:
 | `%USERPROFILE%\.claude\sessions` | which sessions are actually running |
 | `%APPDATA%\Claude\plan-usage-history.json` | the plan usage percentages |
 
-Nothing is sent anywhere. There is no network code in the script at all — no HTTP client,
-no sockets. The only Windows API it calls raises the Claude window when you click a row.
+Nothing about your chats is sent anywhere. The widget talks to exactly one host, and only
+if **Check for updates** is on: `api.github.com`, to ask this repository whether a newer
+release exists. That request carries nothing but the request itself. Switch the setting off
+and the widget makes no network connection at all.
+
+The only Windows API it calls raises the Claude window when you click a row.
 
 Its own state lives in `%LOCALAPPDATA%`: window position, the learned context windows per
 model, the language, and a debug log.
