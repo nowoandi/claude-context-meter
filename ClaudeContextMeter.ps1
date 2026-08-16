@@ -379,7 +379,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.1.1'
+$Version   = '1.1.2'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -433,6 +433,14 @@ function Complete-UpdateCheck {
         if ($res -and (Test-NewerVersion $res.Version $Version)) {
             $script:UpdateInfo = $res
             Write-Log ("update available: {0} (running {1})" -f $res.Version, $Version)
+            # An update buried in a menu nobody opens is the same as no update at all, so
+            # it gets a visible mark on the widget itself and in the tray tooltip. One
+            # arrow, in the accent colour, that installs when clicked.
+            try {
+                $UpdBtn.ToolTip = ((T 'menu.update') -f $res.Version)
+                $UpdBtn.Visibility = 'Visible'
+                $tray.Text = ((T 'menu.update') -f $res.Version)
+            } catch { }
         }
     } catch { }
     try { $script:UpdatePS.Dispose() } catch { }
@@ -781,6 +789,7 @@ function Get-RunningSessionIds {
       <Grid>
         <TextBlock x:Name="HdrLbl" Text="Чаты Claude" Foreground="#B4BECD" FontSize="11" FontFamily="Segoe UI" HorizontalAlignment="Left"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <TextBlock x:Name="UpdBtn" Text="↓" Foreground="#7DDE72" FontSize="13" FontWeight="Bold" FontFamily="Segoe UI" Cursor="Hand" Margin="0,0,9,0" Visibility="Collapsed"/>
           <TextBlock x:Name="MenuBtn" Text="⚙" Foreground="#8792A3" FontSize="12" FontFamily="Segoe UI Symbol" Cursor="Hand" Margin="0,0,9,0"/>
           <TextBlock x:Name="CloseBtn" Text="✕" Foreground="#8792A3" FontSize="12" Cursor="Hand"/>
         </StackPanel>
@@ -827,6 +836,7 @@ $Sum7      = $window.FindName("Sum7")
 $LoadNote  = $window.FindName("LoadNote")
 $CloseBtn  = $window.FindName("CloseBtn")
 $MenuBtn   = $window.FindName("MenuBtn")
+$UpdBtn    = $window.FindName("UpdBtn")
 $HdrLbl    = $window.FindName("HdrLbl")
 $Lbl5      = $window.FindName("Lbl5")
 $Lbl7      = $window.FindName("Lbl7")
@@ -913,6 +923,14 @@ function Apply-Language {
         foreach ($it in $tiRefresh.DropDownItems) { $it.Text = T ('refresh.' + $it.Tag) }
     }
 }
+
+# Which version is running has to be readable without hunting for a file, so it heads the
+# menu, greyed out, and repeats in the tray tooltip.
+$miVer = New-Object Windows.Controls.MenuItem
+$miVer.Header = "Claude Context Meter $Version"
+$miVer.IsEnabled = $false
+$menu.Items.Add($miVer) | Out-Null
+$menu.Items.Add((New-Object Windows.Controls.Separator)) | Out-Null
 
 $miAuto.Add_Click({
     $err = Set-AutostartEnabled ([bool]$miAuto.IsChecked)
@@ -1012,6 +1030,11 @@ function Exit-Widget {
 }
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+# Which version is running has to be readable somewhere without hunting for a file. It sits
+# at the top of the menu, greyed out, and in the tray tooltip.
+$tiVer     = $trayMenu.Items.Add("Claude Context Meter $Version")
+$tiVer.Enabled = $false
+$trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $tiShow    = $trayMenu.Items.Add("Show")
 $trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $tiAuto    = $trayMenu.Items.Add("Start at login")
@@ -1093,7 +1116,7 @@ try {
     if (Test-Path $icoPath) { $tray.Icon = New-Object System.Drawing.Icon($icoPath, 16, 16) }
 } catch { Write-Log ("tray icon could not be loaded: " + $_.Exception.Message) }
 if (-not $tray.Icon) { $tray.Icon = [System.Drawing.SystemIcons]::Application }
-$tray.Text = "Claude Context Meter"
+$tray.Text = "Claude Context Meter $Version"
 $tray.ContextMenuStrip = $trayMenu
 $tray.Visible = $true
 $tray.Add_MouseDoubleClick({ if ($window.IsVisible) { Hide-Widget } else { Show-Widget } })
@@ -1108,6 +1131,8 @@ Apply-Language
 # so both header buttons behave alike instead of one of them being subtly unreliable.
 $transparentHit = New-Object Windows.Media.SolidColorBrush ([Windows.Media.ColorConverter]::ConvertFromString("#0114181F"))
 $MenuBtn.Background = $transparentHit
+$UpdBtn.Background = $transparentHit
+$UpdBtn.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true; Install-Update }.GetNewClosure())
 $MenuBtn.Add_MouseLeftButtonDown({
     param($s, $e)
     $e.Handled = $true
