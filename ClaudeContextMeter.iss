@@ -6,7 +6,7 @@
 ; user, and nothing it does warrants an elevation prompt.
 
 #define AppName      "Claude Context Meter"
-#define AppVersion   "1.1.2"
+#define AppVersion   "1.2.0"
 #define AppPublisher "nowoandi"
 #define AppURL       "https://github.com/nowoandi/claude-context-meter"
 ; The .vbs, not the .bat: it starts PowerShell with the console hidden from creation, so
