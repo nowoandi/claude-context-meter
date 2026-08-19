@@ -1,0 +1,143 @@
+start 2026-08-16T01:00:45.7783491+02:00
+showing window 2026-08-16T01:00:47.7375034+02:00
+2026-08-16 12:43:40  [38992]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1
+2026-08-16 12:43:41  [38992]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:43:43  [38992]  legacy Run-key entry removed
+2026-08-16 12:43:45  [38992]  showing window
+PROBE from task
+2026-08-16 12:46:01  [42716]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1
+2026-08-16 12:46:02  [42716]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:46:04  [42716]  showing window
+2026-08-16 12:48:46  [42716]  heartbeat tick=200 privateMB=215 handles=722 logs=161 rows=6
+2026-08-16 12:50:33  [40768]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-16 12:50:33  [40768]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:50:35  [40768]  showing window
+2026-08-16 12:51:36  [32592]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-16 12:51:37  [32592]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:51:38  [32592]  showing window
+2026-08-16 12:52:28  [46576]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-16 12:52:29  [46576]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:52:30  [46576]  showing window
+2026-08-16 12:53:57  [37012]  ---- start | script: D:\Projects\10 - Installationen\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-16 12:53:58  [37012]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-16 12:54:00  [37012]  showing window
+2026-08-17 16:51:35  [21928]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-17 16:51:38  [21928]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-17 16:51:41  [21928]  showing window
+2026-08-17 16:54:33  [21928]  heartbeat tick=200 privateMB=211 handles=887 logs=155 rows=6
+2026-08-17 17:02:48  [21928]  heartbeat tick=400 privateMB=222 handles=881 logs=155 rows=6
+2026-08-17 17:13:14  [21928]  heartbeat tick=600 privateMB=230 handles=879 logs=155 rows=6
+2026-08-17 17:23:40  [21928]  heartbeat tick=800 privateMB=210 handles=884 logs=155 rows=6
+2026-08-17 17:34:07  [21928]  heartbeat tick=1000 privateMB=204 handles=785 logs=155 rows=6
+2026-08-17 17:44:32  [21928]  heartbeat tick=1200 privateMB=214 handles=785 logs=155 rows=6
+2026-08-17 17:54:57  [21928]  heartbeat tick=1400 privateMB=205 handles=785 logs=155 rows=6
+2026-08-17 18:05:21  [21928]  heartbeat tick=1600 privateMB=211 handles=785 logs=155 rows=6
+2026-08-17 18:15:45  [21928]  heartbeat tick=1800 privateMB=206 handles=785 logs=155 rows=6
+2026-08-17 18:26:09  [21928]  heartbeat tick=2000 privateMB=217 handles=785 logs=155 rows=6
+2026-08-17 18:36:33  [21928]  heartbeat tick=2200 privateMB=208 handles=785 logs=155 rows=6
+2026-08-17 18:46:57  [21928]  heartbeat tick=2400 privateMB=205 handles=786 logs=155 rows=6
+2026-08-17 18:57:21  [21928]  heartbeat tick=2600 privateMB=215 handles=785 logs=155 rows=6
+2026-08-17 19:07:45  [21928]  heartbeat tick=2800 privateMB=205 handles=785 logs=155 rows=6
+2026-08-17 19:18:12  [21928]  heartbeat tick=3000 privateMB=218 handles=800 logs=155 rows=6
+2026-08-17 19:28:39  [21928]  heartbeat tick=3200 privateMB=214 handles=790 logs=155 rows=6
+2026-08-17 19:39:06  [21928]  heartbeat tick=3400 privateMB=192 handles=790 logs=155 rows=6
+2026-08-17 19:39:42  [21928]  window closed - exiting normally
+2026-08-17 21:15:26  [30908]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-17 21:15:26  [30908]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-17 21:15:28  [30908]  showing window
+2026-08-17 21:18:14  [30908]  heartbeat tick=200 privateMB=243 handles=911 logs=152 rows=6
+2026-08-17 21:26:28  [30908]  heartbeat tick=400 privateMB=227 handles=910 logs=152 rows=6
+2026-08-17 21:36:56  [30908]  heartbeat tick=600 privateMB=218 handles=899 logs=153 rows=6
+2026-08-17 21:47:23  [30908]  heartbeat tick=800 privateMB=219 handles=904 logs=153 rows=6
+2026-08-17 21:51:51  [30908]  SYSTEM: session ending, reason SystemShutdown
+2026-08-17 21:51:52  [30908]  SYSTEM: session ended, reason SystemShutdown
+2026-08-17 21:57:55  [10900]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-17 21:58:00  [10900]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-17 21:58:02  [10900]  showing window
+2026-08-17 22:00:50  [10900]  heartbeat tick=200 privateMB=223 handles=892 logs=153 rows=6
+2026-08-17 22:08:58  [10900]  heartbeat tick=400 privateMB=206 handles=889 logs=153 rows=6
+2026-08-17 22:19:30  [10900]  heartbeat tick=600 privateMB=208 handles=886 logs=153 rows=6
+2026-08-17 22:22:37  [10900]  SYSTEM: session ending, reason SystemShutdown
+2026-08-17 22:22:37  [10900]  SYSTEM: session ended, reason SystemShutdown
+2026-08-17 22:25:00  [10756]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-17 22:25:03  [10756]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-17 22:25:05  [10756]  showing window
+2026-08-17 22:27:51  [10756]  heartbeat tick=200 privateMB=218 handles=868 logs=153 rows=6
+2026-08-17 22:35:59  [10756]  heartbeat tick=400 privateMB=187 handles=890 logs=153 rows=6
+2026-08-17 22:46:26  [10756]  heartbeat tick=600 privateMB=206 handles=886 logs=153 rows=6
+2026-08-17 22:56:54  [10756]  heartbeat tick=800 privateMB=196 handles=886 logs=153 rows=6
+2026-08-17 23:07:21  [10756]  heartbeat tick=1000 privateMB=191 handles=787 logs=153 rows=6
+2026-08-17 23:17:48  [10756]  heartbeat tick=1200 privateMB=191 handles=788 logs=153 rows=6
+2026-08-17 23:28:17  [10756]  heartbeat tick=1400 privateMB=190 handles=792 logs=153 rows=6
+2026-08-17 23:38:42  [10756]  SYSTEM: session ending, reason SystemShutdown
+2026-08-17 23:38:42  [10756]  SYSTEM: session ended, reason SystemShutdown
+2026-08-18 17:01:43  [15892]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-18 17:01:49  [15892]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-18 17:01:51  [15892]  showing window
+2026-08-18 17:04:51  [15892]  heartbeat tick=200 privateMB=223 handles=897 logs=138 rows=6
+2026-08-18 17:15:22  [15892]  heartbeat tick=400 privateMB=232 handles=890 logs=139 rows=6
+2026-08-18 17:25:54  [15892]  heartbeat tick=600 privateMB=210 handles=883 logs=139 rows=6
+2026-08-18 17:36:25  [15892]  heartbeat tick=800 privateMB=191 handles=883 logs=139 rows=6
+2026-08-18 17:45:04  [15892]  heartbeat tick=1000 privateMB=224 handles=789 logs=140 rows=6
+2026-08-18 17:50:46  [15892]  window closed - exiting normally
+2026-08-18 17:51:36  [33036]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-18 17:51:37  [33036]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-18 17:51:38  [33036]  showing window
+2026-08-18 17:54:29  [33036]  heartbeat tick=200 privateMB=284 handles=913 logs=138 rows=6
+2026-08-18 18:04:12  [33036]  heartbeat tick=400 privateMB=285 handles=909 logs=138 rows=6
+2026-08-18 18:14:45  [33036]  heartbeat tick=600 privateMB=225 handles=899 logs=138 rows=6
+2026-08-18 18:20:23  [33036]  SYSTEM: session ending, reason SystemShutdown
+2026-08-18 18:20:23  [33036]  SYSTEM: session ended, reason SystemShutdown
+2026-08-18 18:25:55  [18596]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-18 18:25:57  [18596]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-18 18:25:59  [18596]  showing window
+2026-08-18 18:28:58  [18596]  heartbeat tick=200 privateMB=256 handles=901 logs=138 rows=6
+2026-08-18 18:38:22  [18596]  heartbeat tick=400 privateMB=202 handles=886 logs=138 rows=6
+2026-08-18 18:48:56  [18596]  heartbeat tick=600 privateMB=213 handles=885 logs=139 rows=6
+2026-08-18 18:59:31  [18596]  heartbeat tick=800 privateMB=208 handles=884 logs=139 rows=6
+2026-08-18 19:10:03  [18596]  heartbeat tick=1000 privateMB=200 handles=785 logs=139 rows=6
+2026-08-18 19:20:33  [18596]  heartbeat tick=1200 privateMB=195 handles=785 logs=139 rows=6
+2026-08-18 19:31:02  [18596]  heartbeat tick=1400 privateMB=195 handles=785 logs=139 rows=6
+2026-08-18 19:41:32  [18596]  heartbeat tick=1600 privateMB=194 handles=785 logs=139 rows=6
+2026-08-18 19:52:01  [18596]  heartbeat tick=1800 privateMB=194 handles=785 logs=139 rows=6
+2026-08-18 20:02:37  [18596]  heartbeat tick=2000 privateMB=205 handles=785 logs=139 rows=6
+2026-08-18 20:13:10  [18596]  heartbeat tick=2200 privateMB=202 handles=786 logs=139 rows=6
+2026-08-18 20:23:43  [18596]  heartbeat tick=2400 privateMB=199 handles=786 logs=139 rows=6
+2026-08-18 20:34:15  [18596]  heartbeat tick=2600 privateMB=196 handles=787 logs=139 rows=6
+2026-08-18 20:44:45  [18596]  heartbeat tick=2800 privateMB=194 handles=792 logs=139 rows=6
+2026-08-18 20:55:17  [18596]  heartbeat tick=3000 privateMB=194 handles=791 logs=139 rows=6
+2026-08-18 21:05:50  [18596]  heartbeat tick=3200 privateMB=194 handles=791 logs=139 rows=6
+2026-08-18 21:16:23  [18596]  heartbeat tick=3400 privateMB=204 handles=795 logs=139 rows=6
+2026-08-18 21:26:57  [18596]  heartbeat tick=3600 privateMB=201 handles=795 logs=139 rows=6
+2026-08-18 21:37:31  [18596]  heartbeat tick=3800 privateMB=202 handles=796 logs=140 rows=6
+2026-08-18 21:48:04  [18596]  heartbeat tick=4000 privateMB=203 handles=795 logs=140 rows=6
+2026-08-18 21:58:37  [18596]  heartbeat tick=4200 privateMB=201 handles=795 logs=140 rows=6
+2026-08-18 22:09:10  [18596]  heartbeat tick=4400 privateMB=195 handles=795 logs=140 rows=6
+2026-08-18 22:19:41  [18596]  heartbeat tick=4600 privateMB=194 handles=795 logs=140 rows=6
+2026-08-18 22:30:10  [18596]  heartbeat tick=4800 privateMB=203 handles=795 logs=140 rows=6
+2026-08-18 22:40:38  [18596]  heartbeat tick=5000 privateMB=202 handles=795 logs=140 rows=6
+2026-08-18 22:51:06  [18596]  heartbeat tick=5200 privateMB=196 handles=795 logs=140 rows=6
+2026-08-18 23:01:34  [18596]  heartbeat tick=5400 privateMB=196 handles=793 logs=140 rows=6
+2026-08-18 23:12:05  [18596]  heartbeat tick=5600 privateMB=194 handles=795 logs=140 rows=6
+2026-08-18 23:22:41  [18596]  heartbeat tick=5800 privateMB=194 handles=795 logs=140 rows=6
+2026-08-18 23:33:18  [18596]  heartbeat tick=6000 privateMB=212 handles=795 logs=140 rows=6
+2026-08-18 23:43:53  [18596]  heartbeat tick=6200 privateMB=201 handles=795 logs=140 rows=6
+2026-08-18 23:54:29  [18596]  heartbeat tick=6400 privateMB=215 handles=795 logs=140 rows=6
+2026-08-19 00:05:02  [18596]  heartbeat tick=6600 privateMB=218 handles=795 logs=140 rows=6
+2026-08-19 00:09:21  [18596]  SYSTEM: session ending, reason SystemShutdown
+2026-08-19 00:09:21  [18596]  SYSTEM: session ended, reason SystemShutdown
+2026-08-19 14:49:57  [10804]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-19 14:49:59  [10804]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-19 14:50:01  [10804]  showing window
+2026-08-19 14:52:53  [10804]  heartbeat tick=200 privateMB=219 handles=864 logs=123 rows=6
+2026-08-19 15:02:48  [10804]  heartbeat tick=400 privateMB=217 handles=883 logs=124 rows=6
+2026-08-19 15:13:21  [10804]  heartbeat tick=600 privateMB=218 handles=883 logs=124 rows=6
+2026-08-19 15:20:29  [10804]  window closed - exiting normally
+2026-08-19 15:20:41  [12224]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-19 15:20:41  [33696]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-19 15:20:41  [26928]  ---- start | script: C:\Users\nowoa\AppData\Local\Programs\ClaudeContextMeter\ClaudeContextMeter.ps1 | log: C:\Users\nowoa\AppData\Local\ClaudeContextMeter.log
+2026-08-19 15:20:41  [33696]  already running - watchdog start exits here
+2026-08-19 15:20:41  [26928]  already running - watchdog start exits here
+2026-08-19 15:20:41  [12224]  refresh set to normal (tick 3000 ms, rescan 30 s)
+2026-08-19 15:20:43  [12224]  showing window
+2026-08-19 15:23:35  [12224]  heartbeat tick=200 privateMB=224 handles=910 logs=125 rows=6

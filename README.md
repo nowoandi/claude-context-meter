@@ -61,7 +61,7 @@ either way. Double-clicking the tray icon shows or hides the window.
 - **Start at login** — registers a scheduled task with a logon trigger, running as you,
   without admin rights. The tick is read from the Task Scheduler every time a menu opens,
   so a task removed from outside shows as off instead of leaving a stale tick behind.
-- **Language** — English or Russian, applied immediately.
+- **Language** — English, German or Russian, applied immediately.
 - **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
   recursive rescan are stretched together, because the rescan is the expensive half;
   slowing only the tick would keep the cost and lose the freshness.
@@ -144,4 +144,4 @@ Windows with Windows PowerShell 5.1 (shipped with Windows 10 and 11). Nothing el
 | `Start-ContextMeter.bat` | launcher |
 | `ClaudeContextMeter.ico` | application icon |
 
-[Русская версия](README.ru.md)
+[Deutsche Fassung](README.de.md) · [Русская версия](README.ru.md)

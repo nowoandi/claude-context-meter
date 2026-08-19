@@ -6,7 +6,7 @@
 ; user, and nothing it does warrants an elevation prompt.
 
 #define AppName      "Claude Context Meter"
-#define AppVersion   "1.2.0"
+#define AppVersion   "1.2.1"
 #define AppPublisher "nowoandi"
 #define AppURL       "https://github.com/nowoandi/claude-context-meter"
 ; The .vbs, not the .bat: it starts PowerShell with the console hidden from creation, so
@@ -38,6 +38,7 @@ AppMutex=Global\ClaudeContextMeter
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
@@ -52,11 +53,14 @@ Source: "README.md";                DestDir: "{app}"; Flags: ignoreversion
 Source: "README.ru.md";             DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}";        Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"
-Name: "{userdesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#AppName}";        Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"
+Name: "{userdesktop}\{#AppName}";  Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
+; Through wscript.exe by name rather than by letting the shell work out what a .vbs is.
+; The association is normally fine, but a launcher that depends on one is a launcher that
+; can be broken by something entirely unrelated to this program.
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; Description: "{cm:LaunchProgram,{#AppName}}"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
 ; Autostart is a scheduled task owned by the widget, not something the installer created,

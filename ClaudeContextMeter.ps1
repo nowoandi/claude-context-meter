@@ -384,7 +384,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.2.0'
+$Version   = '1.2.1'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -465,6 +465,14 @@ function Install-Update {
         Invoke-WebRequest -Uri $info.Url -OutFile $dest -UseBasicParsing -TimeoutSec 180
         Write-Log "update downloaded to $dest - starting installer"
         Start-Process -FilePath $dest
+        # Step aside. Left running, the widget forces the installer to close it through the
+        # Restart Manager, and that is where the extra prompts and "file in use" failures
+        # come from - reported on 19.08.2026 as "it said it could not install". Closing
+        # ourselves means the installer finds nothing to close. It offers to start the
+        # widget again when it finishes, and autostart brings it back at the next logon
+        # either way.
+        Write-Log "closing so the installer can replace the files"
+        Exit-Widget
     } catch {
         Write-Log ("update download failed: " + $_.Exception.Message)
         try { Start-Process $info.Page } catch { }
@@ -494,35 +502,35 @@ function Remove-OldInstalls {
 # key or a language is missing — a missing translation must degrade to readable text,
 # never to an empty label. Picker entries carry their own native names, so the list stays
 # readable no matter which language is active.
-$UiLangs   = @( @{ Code = 'en'; Name = 'English' }, @{ Code = 'ru'; Name = 'Русский' } )
+$UiLangs   = @( @{ Code = 'en'; Name = 'English' }, @{ Code = 'de'; Name = 'Deutsch' }, @{ Code = 'ru'; Name = 'Русский' } )
 $DefaultLang = 'en'
 $script:Lang = $DefaultLang
 
 $Strings = @{
-    'hdr.chats'       = @{ ru = 'Чаты Claude';        en = 'Claude chats' }
-    'sum.5h'          = @{ ru = 'токены за 5 часов';  en = 'tokens · last 5 hours' }
-    'sum.7d'          = @{ ru = 'токены за 7 дней';   en = 'tokens · last 7 days' }
-    'sum.limit'       = @{ ru = 'лимит';              en = 'limit' }
-    'note.loading'    = @{ ru = 'догружаю историю…';  en = 'loading history…' }
-    'row.scanning'    = @{ ru = 'сканирую сессии…';   en = 'scanning sessions…' }
-    'row.none'        = @{ ru = 'нет активных сессий'; en = 'no active sessions' }
-    'tip.noctx'       = @{ ru = 'контекст неизвестен (лог недоступен)'; en = 'context unknown (log unavailable)' }
-    'tip.tokens'      = @{ ru = 'токенов';            en = 'tokens' }
-    'tip.model'       = @{ ru = 'модель';             en = 'model' }
-    'tip.activity'    = @{ ru = 'активность {0} мин назад'; en = 'active {0} min ago' }
-    'tip.click'       = @{ ru = 'клик — показать окно Claude'; en = 'click — bring Claude to front' }
-    'menu.autostart'  = @{ ru = 'Запускать при входе в систему'; en = 'Start at login' }
-    'menu.language'   = @{ ru = 'Язык';               en = 'Language' }
-    'menu.refresh'    = @{ ru = 'Частота обновления'; en = 'Refresh rate' }
-    'menu.rememberpos'= @{ ru = 'Запоминать положение'; en = 'Remember position' }
-    'menu.updates'    = @{ ru = 'Проверять обновления'; en = 'Check for updates' }
-    'menu.update'     = @{ ru = 'Обновить до {0}';      en = 'Update to {0}' }
-    'refresh.normal'  = @{ ru = 'Обычная';            en = 'Normal' }
-    'refresh.easy'    = @{ ru = 'Экономная';          en = 'Easy' }
-    'refresh.low'     = @{ ru = 'Минимальная';        en = 'Minimal' }
-    'menu.close'      = @{ ru = 'Скрыть';             en = 'Hide' }
-    'menu.show'       = @{ ru = 'Показать';           en = 'Show' }
-    'menu.exit'       = @{ ru = 'Выйти';              en = 'Exit' }
+    'hdr.chats'       = @{ ru = 'Чаты Claude';        de = 'Claude-Chats'; en = 'Claude chats' }
+    'sum.5h'          = @{ ru = 'токены за 5 часов';  de = 'Tokens · letzte 5 Stunden'; en = 'tokens · last 5 hours' }
+    'sum.7d'          = @{ ru = 'токены за 7 дней';   de = 'Tokens · letzte 7 Tage'; en = 'tokens · last 7 days' }
+    'sum.limit'       = @{ ru = 'лимит';              de = 'Limit'; en = 'limit' }
+    'note.loading'    = @{ ru = 'догружаю историю…';  de = 'Verlauf wird geladen…'; en = 'loading history…' }
+    'row.scanning'    = @{ ru = 'сканирую сессии…';   de = 'Sitzungen werden gesucht…'; en = 'scanning sessions…' }
+    'row.none'        = @{ ru = 'нет активных сессий'; de = 'keine aktiven Sitzungen'; en = 'no active sessions' }
+    'tip.noctx'       = @{ ru = 'контекст неизвестен (лог недоступен)'; de = 'Kontext unbekannt (Protokoll nicht lesbar)'; en = 'context unknown (log unavailable)' }
+    'tip.tokens'      = @{ ru = 'токенов';            de = 'Tokens'; en = 'tokens' }
+    'tip.model'       = @{ ru = 'модель';             de = 'Modell'; en = 'model' }
+    'tip.activity'    = @{ ru = 'активность {0} мин назад'; de = 'aktiv vor {0} Min.'; en = 'active {0} min ago' }
+    'tip.click'       = @{ ru = 'клик — показать окно Claude'; de = 'Klick — Claude in den Vordergrund'; en = 'click — bring Claude to front' }
+    'menu.autostart'  = @{ ru = 'Запускать при входе в систему'; de = 'Bei der Anmeldung starten'; en = 'Start at login' }
+    'menu.language'   = @{ ru = 'Язык';               de = 'Sprache'; en = 'Language' }
+    'menu.refresh'    = @{ ru = 'Частота обновления'; de = 'Aktualisierungsrate'; en = 'Refresh rate' }
+    'menu.rememberpos'= @{ ru = 'Запоминать положение'; de = 'Position merken'; en = 'Remember position' }
+    'menu.updates'    = @{ ru = 'Проверять обновления'; de = 'Nach Updates suchen'; en = 'Check for updates' }
+    'menu.update'     = @{ ru = 'Обновить до {0}';      de = 'Auf {0} aktualisieren'; en = 'Update to {0}' }
+    'refresh.normal'  = @{ ru = 'Обычная';            de = 'Normal'; en = 'Normal' }
+    'refresh.easy'    = @{ ru = 'Экономная';          de = 'Sparsam'; en = 'Easy' }
+    'refresh.low'     = @{ ru = 'Минимальная';        de = 'Minimal'; en = 'Minimal' }
+    'menu.close'      = @{ ru = 'Скрыть';             de = 'Ausblenden'; en = 'Hide' }
+    'menu.show'       = @{ ru = 'Показать';           de = 'Anzeigen'; en = 'Show' }
+    'menu.exit'       = @{ ru = 'Выйти';              de = 'Beenden'; en = 'Exit' }
 }
 
 function T([string]$key) {
