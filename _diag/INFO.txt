@@ -1,9 +1,0 @@
-LOCALAPPDATA=C:\Users\nowoa\AppData\Local
-TEMP=C:\Users\nowoa\AppData\Local\Temp
---- Setup-Dateien in TEMP ---
-  ClaudeContextMeter-1.2.0-setup.exe  2087762 B  08/19/2026 15:45:23
---- installierte Version ---
-$Version   = '1.2.0'
-  Datei geaendert: 08/19/2026 15:41:48
---- Uninstall-Eintrag ---
-  kein Eintrag

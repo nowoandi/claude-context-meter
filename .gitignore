@@ -4,3 +4,7 @@
 
 # Build output — the setup.exe belongs on a Releases page, not in the tree.
 dist/
+
+# Scratch folders used while diagnosing - never part of the product.
+_diag/
+_realcopy/
