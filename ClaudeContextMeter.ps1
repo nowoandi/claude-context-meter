@@ -1050,6 +1050,8 @@ function Hide-Widget {
 function Exit-Widget {
     try { $tray.Visible = $false; $tray.Dispose() } catch {}
     $window.Close()
+    # Closing no longer ends the process on its own now that the message loop is explicit.
+    try { $window.Dispatcher.InvokeShutdown() } catch {}
 }
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
@@ -1197,6 +1199,9 @@ $window.Add_Closed({
     # in the notification area until the mouse happens to brush it.
     try { if ($tray) { $tray.Visible = $false; $tray.Dispose() } } catch {}
     Write-Log "window closed - exiting"
+    # However the window ends - the system closing it, a crash in the shell - the loop has
+    # to end with it, or the process would linger with no window and no way to reach it.
+    try { $window.Dispatcher.InvokeShutdown() } catch {}
 })
 # The cross hides now instead of ending the process; Exit in the tray menu is the real end.
 $CloseBtn.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true; Hide-Widget })
@@ -1502,5 +1507,13 @@ try {
 } catch { Write-Log ("could not lower priority: " + $_.Exception.Message) }
 
 Write-Log "showing window"
-$null = $window.ShowDialog()
-Write-Log "window closed - exiting normally"
+# Show(), not ShowDialog(). ShowDialog runs a modal loop that ends the moment the window
+# stops being shown - so Hide() ended it too, ShowDialog returned, the script ran off the
+# end and the process exited. That is exactly why the cross and the tray "Hide" made the
+# widget vanish for good instead of tucking it away: reported on 19.08.2026 as "I clicked
+# the icon and it went out", and the real log confirms it with "window closed" one second
+# after the click. With Show() plus an explicit dispatcher loop, hiding is just hiding, and
+# only Exit-Widget ends the loop.
+$window.Show()
+[System.Windows.Threading.Dispatcher]::Run()
+Write-Log "dispatcher loop ended - exiting"
