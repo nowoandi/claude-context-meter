@@ -49,7 +49,8 @@ A shortcut with the app icon is easy to make: point it at the `.vbs` and set its
 `ClaudeContextMeter.ico`.
 
 Drag the widget anywhere — it remembers where you put it. `✕` hides it; it keeps running
-and comes back from the tray icon. Only **Exit** in the tray menu really ends it.
+and comes back from the tray icon. Only **Exit** in the tray menu really ends it. Launching it again while it is hidden just
+brings it back — there is never a second copy.
 
 ## Settings
 

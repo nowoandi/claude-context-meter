@@ -46,7 +46,8 @@ vornherein versteckt, sodass gar nichts erscheint.
 
 Das Widget lässt sich mit der Maus verschieben und merkt sich, wohin. Das `✕` blendet es
 aus; es läuft weiter und kommt über das Symbol im Infobereich zurück. Wirklich beendet wird
-es nur mit **Beenden** in dessen Menü.
+es nur mit **Beenden** in dessen Menü. Startet man es erneut, während es ausgeblendet ist,
+kommt einfach das Fenster zurück — eine zweite Kopie entsteht nie.
 
 ## Einstellungen
 

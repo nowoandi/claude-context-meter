@@ -70,6 +70,17 @@ trap { Write-Log ("TRAP: " + ($_ | Out-String).Trim()); break }
 # ours. Letting it escape kept the widget from ever starting again after such a kill.
 # Both outcomes are logged now: "it vanished" and "it refused to start because a copy in
 # another folder already held the mutex" look identical on screen and are different bugs.
+# A second launch has to be able to say "show yourself" to the copy already running.
+# Without it, clicking the shortcut while the window is hidden does absolutely nothing:
+# the new process finds the mutex taken and exits in silence, and the user is left with a
+# tray icon, no window, and no idea whether the thing is alive. Reported 21.08.2026.
+$script:ShowEvent = $null
+try {
+    $created = $false
+    $script:ShowEvent = New-Object System.Threading.EventWaitHandle(
+        $false, [System.Threading.EventResetMode]::AutoReset, "Global\ClaudeContextMeterShow", [ref]$created)
+} catch { }
+
 $script:mutex = New-Object System.Threading.Mutex($false, "Global\ClaudeContextMeter")
 try {
     $free = $script:mutex.WaitOne(0, $false)
@@ -77,7 +88,11 @@ try {
     $free = $true
     Write-Log "mutex was abandoned - the previous instance did not exit cleanly"
 }
-if (-not $free) { Write-Log "already running - watchdog start exits here"; exit }
+if (-not $free) {
+    try { if ($script:ShowEvent) { [void]$script:ShowEvent.Set() } } catch { }
+    Write-Log "already running - asked the running copy to show itself"
+    exit
+}
 
 # Loading WPF costs the better part of a second, so it happens AFTER the guard: the
 # autostart task restarts the widget every 15 minutes as a watchdog, and 95 of those 96
@@ -384,7 +399,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.2.1'
+$Version   = '1.2.2'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -531,6 +546,9 @@ $Strings = @{
     'menu.close'      = @{ ru = 'Скрыть';             de = 'Ausblenden'; en = 'Hide' }
     'menu.show'       = @{ ru = 'Показать';           de = 'Anzeigen'; en = 'Show' }
     'menu.exit'       = @{ ru = 'Выйти';              de = 'Beenden'; en = 'Exit' }
+    'hint.hidden'     = @{ ru = 'Виджет свёрнут в область уведомлений. Двойной щелчок по значку вернёт его.'
+                           de = 'Das Widget liegt jetzt im Infobereich. Ein Doppelklick auf das Symbol holt es zurück.'
+                           en = 'The widget is in the notification area. Double-click its icon to bring it back.' }
 }
 
 function T([string]$key) {
@@ -1054,6 +1072,14 @@ function Show-Widget {
 function Hide-Widget {
     Save-Position
     $window.Hide()
+    # Once, ever. A window that vanishes with no word looks broken; the same window with one
+    # line saying where it went is a feature. After that the user knows, and repeating it
+    # would be nagging.
+    if (-not $script:State['hideHintShown']) {
+        try { $tray.ShowBalloonTip(6000, "Claude Context Meter", (T 'hint.hidden'), [System.Windows.Forms.ToolTipIcon]::Info) } catch { }
+        $script:State['hideHintShown'] = $true
+        Save-State $script:State
+    }
 }
 function Exit-Widget {
     try { $tray.Visible = $false; $tray.Dispose() } catch {}
@@ -1458,6 +1484,12 @@ function Invoke-Tick {
 
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
+
+    # Did a second launch ask us to come back? Auto-reset, so reading it consumes it.
+    if ($script:ShowEvent -and $script:ShowEvent.WaitOne(0)) {
+        Write-Log "another launch asked for the window - showing it"
+        Show-Widget
+    }
 
     # Last-alive marker. One tiny write every ten ticks - cheap, and it is what pins the
     # moment of a disappearance to half a minute instead of eleven.
