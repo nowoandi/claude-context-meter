@@ -1,0 +1,17 @@
+{
+  "name": "nowoandi",
+  "owner": {
+    "name": "nowoandi",
+    "url": "https://github.com/nowoandi"
+  },
+  "description": "Plugins by nowoandi.",
+  "plugins": [
+    {
+      "name": "claude-context-meter",
+      "source": "./",
+      "description": "Drive the Claude Context Meter widget from Claude Code on Windows.",
+      "category": "productivity",
+      "keywords": ["context-window", "tokens", "usage", "windows"]
+    }
+  ]
+}

@@ -52,6 +52,31 @@ Drag the widget anywhere — it remembers where you put it. `✕` hides it; it k
 and comes back from the tray icon. Only **Exit** in the tray menu really ends it. Launching it again while it is hidden just
 brings it back — there is never a second copy.
 
+## As a Claude Code plugin
+
+The repository is also a Claude Code plugin, so the widget can be driven from inside a
+session instead of from the desktop:
+
+```bash
+claude plugin marketplace add nowoandi/claude-context-meter
+claude plugin install claude-context-meter@nowoandi
+```
+
+| Command | |
+|---|---|
+| `/claude-context-meter:start` | starts the widget, or brings a hidden one back |
+| `/claude-context-meter:stop` | ends the process that tray **Exit** would have ended |
+| `/claude-context-meter:status` | whether it runs, which copy, which version, and whether it starts at login |
+| `/claude-context-meter:troubleshoot` | what the numbers are read from, and what to check when one looks wrong |
+
+The plugin carries the whole widget, so installing it is enough to run one. It still
+prefers an installed copy under `%LOCALAPPDATA%\Programs\ClaudeContextMeter` when there is
+one — a machine that ran the setup should keep a single version, not gain a second. The
+commands are Windows-only, because that is where the widget runs.
+
+`troubleshoot` is the one command Claude also reaches for on its own, when a question is
+about the widget rather than about the code.
+
 ## Settings
 
 ![The menu](docs/menu.png)

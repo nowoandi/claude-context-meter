@@ -1,0 +1,13 @@
+{
+  "name": "claude-context-meter",
+  "displayName": "Claude Context Meter",
+  "version": "1.2.2",
+  "description": "The Windows widget that shows how full every running Claude chat's context window is, driven from inside Claude Code: start it, stop it, ask whether it is running, and diagnose it when it misbehaves.",
+  "author": {
+    "name": "nowoandi",
+    "url": "https://github.com/nowoandi"
+  },
+  "homepage": "https://github.com/nowoandi/claude-context-meter",
+  "repository": "https://github.com/nowoandi/claude-context-meter",
+  "keywords": ["context-window", "tokens", "usage", "rate-limit", "windows", "widget", "powershell"]
+}

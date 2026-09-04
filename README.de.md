@@ -49,6 +49,31 @@ aus; es läuft weiter und kommt über das Symbol im Infobereich zurück. Wirklic
 es nur mit **Beenden** in dessen Menü. Startet man es erneut, während es ausgeblendet ist,
 kommt einfach das Fenster zurück — eine zweite Kopie entsteht nie.
 
+## Als Claude-Code-Plugin
+
+Das Repository ist zugleich ein Claude-Code-Plugin — das Widget lässt sich also aus einer
+Sitzung heraus steuern statt vom Desktop:
+
+```bash
+claude plugin marketplace add nowoandi/claude-context-meter
+claude plugin install claude-context-meter@nowoandi
+```
+
+| Befehl | |
+|---|---|
+| `/claude-context-meter:start` | startet das Widget oder holt ein ausgeblendetes zurück |
+| `/claude-context-meter:stop` | beendet den Prozess, den **Beenden** im Infobereich beendet hätte |
+| `/claude-context-meter:status` | ob es läuft, welche Kopie, welche Version, und ob es beim Anmelden startet |
+| `/claude-context-meter:troubleshoot` | woraus die Zahlen gelesen werden und was zu prüfen ist, wenn eine falsch aussieht |
+
+Das Plugin enthält das gesamte Widget; eine Installation genügt also, um eines zu starten.
+Eine installierte Kopie unter `%LOCALAPPDATA%\Programs\ClaudeContextMeter` hat trotzdem
+Vorrang — auf einem Rechner mit Setup soll eine Version liegen und nicht eine zweite
+dazukommen. Die Befehle gelten nur für Windows, denn dort läuft das Widget.
+
+`troubleshoot` ist der einzige Befehl, nach dem Claude auch von sich aus greift, wenn eine
+Frage dem Widget gilt und nicht dem Code.
+
 ## Einstellungen
 
 ![Das Menü](docs/menu.png)
