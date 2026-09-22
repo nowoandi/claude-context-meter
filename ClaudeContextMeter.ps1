@@ -399,13 +399,20 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.2.2'
+$Version   = '1.2.3'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
-$script:UpdateInfo   = $null
-$script:UpdatePS     = $null
-$script:UpdateHandle = $null
+$script:UpdateInfo     = $null
+$script:UpdatePS       = $null
+$script:UpdateHandle   = $null
+$script:DownloadPS     = $null
+$script:DownloadHandle = $null
+# Set for exactly as long as the system's modal move loop owns the mouse. Everything that
+# could show, hide or activate the window has to stand back while it is true - see the
+# MouseLeftButtonDown handler for what happens when something does not.
+$script:Dragging       = $false
+$script:ShowPending    = $false
 
 function Test-NewerVersion([string]$remote, [string]$current) {
     try {
@@ -471,27 +478,78 @@ function Complete-UpdateCheck {
 # Download, then hand over to the installer and step aside. The installer knows this widget
 # is running because it shares the single-instance mutex, so it asks for it to be closed
 # rather than writing over a file in use.
+#
+# The download itself goes into its own runspace, for the same reason the check does - only
+# more so. It used to run on the dispatcher thread with a 180-second timeout, started
+# straight from a mouse-down on the arrow, so a slow mirror froze the widget for up to
+# three minutes. A frozen dispatcher is not merely cosmetic here: a mouse-down on this
+# window is also what starts DragMove, and the modal move loop DragMove enters can only
+# release the mouse capture from this same thread. Blocked here, the capture stays taken
+# and the mouse stops working across the whole desktop until the process is killed. That is
+# the "the mouse disconnected again" report of 21.09.2026 - no driver involved.
 function Install-Update {
-    if (-not $script:UpdateInfo) { return }
+    if (-not $script:UpdateInfo -or $script:DownloadPS) { return }
     $info = $script:UpdateInfo
+    $dest = Join-Path $env:TEMP ("ClaudeContextMeter-{0}-setup.exe" -f $info.Version)
     try {
-        $dest = Join-Path $env:TEMP ("ClaudeContextMeter-{0}-setup.exe" -f $info.Version)
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $info.Url -OutFile $dest -UseBasicParsing -TimeoutSec 180
-        Write-Log "update downloaded to $dest - starting installer"
-        Start-Process -FilePath $dest
-        # Step aside. Left running, the widget forces the installer to close it through the
-        # Restart Manager, and that is where the extra prompts and "file in use" failures
-        # come from - reported on 19.08.2026 as "it said it could not install". Closing
-        # ourselves means the installer finds nothing to close. It offers to start the
-        # widget again when it finishes, and autostart brings it back at the next logon
-        # either way.
-        Write-Log "closing so the installer can replace the files"
-        Exit-Widget
+        $script:DownloadPS = [PowerShell]::Create()
+        [void]$script:DownloadPS.AddScript({
+            param($url, $target)
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest -Uri $url -OutFile $target -UseBasicParsing -TimeoutSec 180
+                [PSCustomObject]@{ Ok = $true;  Path = $target; Error = $null }
+            } catch {
+                [PSCustomObject]@{ Ok = $false; Path = $target; Error = $_.Exception.Message }
+            }
+        }).AddArgument($info.Url).AddArgument($dest)
+        $script:DownloadHandle = $script:DownloadPS.BeginInvoke()
+        Write-Log "update download started in the background - $($info.Url)"
+        # The click has to show something, or it reads as a dead button and gets clicked
+        # again. The guard above makes the second click harmless either way.
+        try { $UpdBtn.ToolTip = (T 'menu.updating'); $tray.Text = (T 'menu.updating') } catch { }
     } catch {
-        Write-Log ("update download failed: " + $_.Exception.Message)
+        Write-Log ("update download could not start: " + $_.Exception.Message)
+        try { $script:DownloadPS.Dispose() } catch { }
+        $script:DownloadPS = $null
+        $script:DownloadHandle = $null
         try { Start-Process $info.Page } catch { }
     }
+}
+
+# Polled from the tick, exactly like Complete-UpdateCheck, so a stalled download costs the
+# widget nothing but a tooltip.
+function Complete-UpdateDownload {
+    if (-not $script:DownloadHandle -or -not $script:DownloadHandle.IsCompleted) { return }
+    $res = $null
+    try { $res = @($script:DownloadPS.EndInvoke($script:DownloadHandle))[0] } catch { }
+    try { $script:DownloadPS.Dispose() } catch { }
+    $script:DownloadPS     = $null
+    $script:DownloadHandle = $null
+    if ($res -and $res.Ok) {
+        Write-Log "update downloaded to $($res.Path) - starting installer"
+        try {
+            Start-Process -FilePath $res.Path
+            # Step aside. Left running, the widget forces the installer to close it through
+            # the Restart Manager, and that is where the extra prompts and "file in use"
+            # failures come from - reported on 19.08.2026 as "it said it could not
+            # install". Closing ourselves means the installer finds nothing to close. It
+            # offers to start the widget again when it finishes, and autostart brings it
+            # back at the next logon either way.
+            Write-Log "closing so the installer can replace the files"
+            Exit-Widget
+            return
+        } catch {
+            Write-Log ("could not start the installer: " + $_.Exception.Message)
+        }
+    } else {
+        Write-Log ("update download failed: " + $(if ($res) { $res.Error } else { 'no result from the runspace' }))
+    }
+    # Failed either way: put the offer back the way it was and open the release page, which
+    # is what the old code did when the download threw.
+    try { $UpdBtn.ToolTip = ((T 'menu.update') -f $script:UpdateInfo.Version) } catch { }
+    try { $tray.Text = ((T 'menu.update') -f $script:UpdateInfo.Version) } catch { }
+    try { if ($script:UpdateInfo) { Start-Process $script:UpdateInfo.Page } } catch { }
 }
 
 # The counterpart to WinDictoo's oldversions.py. A no-op today, and deliberately so: the
@@ -540,6 +598,7 @@ $Strings = @{
     'menu.rememberpos'= @{ ru = 'Запоминать положение'; de = 'Position merken'; en = 'Remember position' }
     'menu.updates'    = @{ ru = 'Проверять обновления'; de = 'Nach Updates suchen'; en = 'Check for updates' }
     'menu.update'     = @{ ru = 'Обновить до {0}';      de = 'Auf {0} aktualisieren'; en = 'Update to {0}' }
+    'menu.updating'   = @{ ru = 'Загрузка обновления…';  de = 'Update wird geladen…';  en = 'Downloading the update…' }
     'refresh.normal'  = @{ ru = 'Обычная';            de = 'Normal'; en = 'Normal' }
     'refresh.easy'    = @{ ru = 'Экономная';          de = 'Sparsam'; en = 'Easy' }
     'refresh.low'     = @{ ru = 'Минимальная';        de = 'Minimal'; en = 'Minimal' }
@@ -1065,11 +1124,18 @@ $window.ContextMenu = $menu
 # again" were the same thing. The tray icon is both the missing indicator and the way back:
 # the cross now hides the window, and only Exit here really ends it.
 function Show-Widget {
+    # Never underneath the modal move loop. Show + Activate inside it steals the mouse
+    # capture the loop is waiting to hand back, and the mouse then stops working
+    # desktop-wide. The request is remembered and honoured on the first tick after the
+    # drag ends - the event that carried it is auto-reset, so it cannot simply be re-read.
+    if ($script:Dragging) { $script:ShowPending = $true; return }
     $window.Show()
     $window.Topmost = $true
     $window.Activate()
 }
 function Hide-Widget {
+    # Same reason as Show-Widget: the window may not go away under the move loop.
+    if ($script:Dragging) { return }
     Save-Position
     $window.Hide()
     # Once, ever. A window that vanishes with no word looks broken; the same window with one
@@ -1225,7 +1291,32 @@ if ($script:RememberPos -and (Test-Path $PosFile)) {
     } catch {}
 }
 # DragMove blocks until the drag ends, so this is the moment the position is final.
-$window.Add_MouseLeftButtonDown({ try { $window.DragMove(); Save-Position } catch {} })
+#
+# What it blocks in matters. DragMove hands the window to the system's own modal move loop
+# (WM_SYSCOMMAND / SC_MOVE), and that loop holds the mouse capture until it sees the
+# button-up belonging to it. The loop also pumps messages while it runs, which means the
+# 150 ms DispatcherTimer keeps firing inside the drag: a tick that called Show-Widget or
+# rebuilt RowsPanel moved the window out from under the loop, the button-up then landed
+# nowhere, the capture was never released - and every application on the desktop stopped
+# seeing the mouse. Reported repeatedly as the mouse disconnecting or the machine freezing
+# for minutes at a time, most recently on 21.09.2026.
+#
+# So the tick is stopped for the length of the drag and the widget is marked busy for
+# anything that might touch the window behind its back.
+$window.Add_MouseLeftButtonDown({
+    param($s, $e)
+    # Entering the loop without the button actually down means waiting for a button-up
+    # that is never coming; DragMove also throws outright in that case.
+    if ($e.ButtonState -ne [System.Windows.Input.MouseButtonState]::Pressed) { return }
+    $script:Dragging = $true
+    try { $timer.Stop() } catch {}
+    try { $window.DragMove() } catch {}
+    finally {
+        $script:Dragging = $false
+        try { $timer.Start() } catch {}
+    }
+    Save-Position
+})
 $window.Add_Closed({
     Save-Position
     Save-ModelMax
@@ -1485,8 +1576,11 @@ function Invoke-Tick {
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
 
-    # Did a second launch ask us to come back? Auto-reset, so reading it consumes it.
-    if ($script:ShowEvent -and $script:ShowEvent.WaitOne(0)) {
+    # Did a second launch ask us to come back? Auto-reset, so reading it consumes it -
+    # which is why a request that arrived mid-drag is carried in ShowPending instead of
+    # being left in the event for the next tick to find.
+    if ($script:ShowPending -or ($script:ShowEvent -and $script:ShowEvent.WaitOne(0))) {
+        $script:ShowPending = $false
         Write-Log "another launch asked for the window - showing it"
         Show-Widget
     }
@@ -1500,6 +1594,7 @@ function Invoke-Tick {
     # Collect the update check when its runspace is done. Polled rather than awaited, so a
     # slow or hanging request costs nothing here.
     Complete-UpdateCheck
+    Complete-UpdateDownload
 
     # A heartbeat with the numbers that would explain a slow death — memory, handles, how
     # many logs are being tracked. Every ~10 minutes, so the log stays readable while still

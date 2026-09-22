@@ -70,6 +70,8 @@ either way. Double-clicking the tray icon shows or hides the window.
   release exists; if there is one, an **Update to x.y.z** line appears in both menus and
   downloads the installer. Every failure — offline, rate-limited, no release, no installer
   attached — is simply "no update": a version check must never be able to break the start.
+  The installer itself downloads in the background; the widget keeps counting and redrawing
+  while it does.
 - **Remember position** — on by default. The position is written the moment you finish
   dragging, not on exit: a widget that is killed rather than closed would otherwise lose
   where you put it every single time. It is validated against the whole desktop, so a spot
