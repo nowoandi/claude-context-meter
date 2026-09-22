@@ -69,6 +69,8 @@ verbirgt das Fenster.
   gibt. Wenn ja, erscheint ein grüner Pfeil in der Kopfzeile und eine Zeile in beiden Menüs.
   Jeder Fehlschlag — offline, Anfragelimit, keine Veröffentlichung, kein Installer — heißt
   schlicht „kein Update“: eine Versionsprüfung darf den Start niemals verhindern können.
+  Der Installer selbst wird im Hintergrund geladen; das Widget zählt und zeichnet
+  unterdessen weiter.
 - **Position merken** — standardmäßig an. Die Position wird geschrieben, sobald Sie das
   Fenster loslassen, nicht erst beim Beenden, und gegen den gesamten Desktop geprüft — ein
   Platz auf einem zweiten Monitor übersteht also einen Neustart, auch dort, wo die
