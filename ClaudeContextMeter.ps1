@@ -399,7 +399,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.2.2'
+$Version   = '1.2.3'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -558,8 +558,28 @@ function T([string]$key) {
     return $e[$DefaultLang]
 }
 
+# Plan usage is a number the app keeps, not one the widget measures, so it is only worth
+# showing while the app is still maintaining it. On 03.10.2026 Claude stopped writing
+# plan-usage-history.json: the last entry was stamped 08:00, the moment the seven-day
+# window reset to zero, and the app moved its rate-limit state into IndexedDB under keys
+# named five_hour, seven_day and unifiedWindows. The widget went on reading the file and
+# faithfully displayed "limit 0 %" for the rest of the day - a borrowed number that had
+# quietly stopped being true. A stale figure presented as current is worse than no figure,
+# so the file now has to be recent to count. The token totals beside it are the widget's
+# own measurement and are unaffected.
+$PlanMaxAgeMin = 120
+
 function Update-PlanUsage {
     try {
+        $age = ((Get-Date) - (Get-Item $UsageFile -ErrorAction Stop).LastWriteTime).TotalMinutes
+        if ($age -gt $PlanMaxAgeMin) {
+            if ($null -ne $script:PlanFh) {
+                Write-Log ("plan usage file is {0:N0} min old - dropping the limit display" -f $age)
+            }
+            $script:PlanFh = $null
+            $script:PlanSd = $null
+            return
+        }
         $fs = [System.IO.File]::Open($UsageFile, 'Open', 'Read', 'ReadWrite')
         try {
             $take = [Math]::Min(4096, $fs.Length)
