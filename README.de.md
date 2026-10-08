@@ -6,7 +6,27 @@ Tokens in den Limitfenstern schon verbraucht sind.
 
 ![Das Widget](docs/widget.png)
 
-Ein einziges PowerShell-Skript. Keine Installation nötig, keine Abhängigkeiten, kein Netz.
+PowerShell und integriertes WPF, keine zusätzlichen Abhängigkeiten. Chatdaten bleiben lokal.
+
+## Tabs für Claude und Codex
+
+Oben lässt sich zwischen **Claude** (Claude Code und Cowork) und **Codex** wechseln.
+Nur die ausgewählte Quelle durchsucht Ordner, liest Protokolle und prüft Prozesse.
+Die andere behält ihren Cache im Speicher und liest beim Zurückwechseln ab der gespeicherten
+Position weiter. Die Auswahl bleibt nach einem Neustart erhalten. Das pausiert die
+Überwachung durch das Widget, nicht die Agenten selbst.
+
+Codex zeigt bis zu sechs Chats mit Aktivität in den letzten drei Stunden, einschließlich
+Desktop und CLI. Es sind zuletzt aktive Chats, keine bestätigte Liste offener Fenster.
+Titel stammen aus `%USERPROFILE%\.codex\session_index.jsonl`, Verbrauch und Kontextgröße
+aus `%USERPROFILE%\.codex\sessions\**\*.jsonl`. Ein gesetztes `CODEX_HOME` ersetzt den
+Standardpfad. Cache-Tokens sind bereits in `input_tokens` enthalten. Der Prozentwert wird
+aktualisiert, sobald Verbrauch im Protokoll steht; bei unbekannter Kontextgröße erscheint `…`.
+Ein Klick bringt das Codex-Anwendungsfenster nach vorne.
+
+Unten stehen die gespeicherten Auslastungswerte für die 5-Stunden- und 7-Tage-Limits.
+Fehlende, über zwei Stunden alte, bereits zurückgesetzte oder zeitlich abweichende Limits
+erscheinen als `—`. Subagenten erhalten keine eigenen Chatzeilen.
 
 ## Was eine Zeile sagt
 

@@ -6,7 +6,7 @@
 ; user, and nothing it does warrants an elevation prompt.
 
 #define AppName      "Claude Context Meter"
-#define AppVersion   "1.2.3"
+#define AppVersion   "1.3.0"
 #define AppPublisher "nowoandi"
 #define AppURL       "https://github.com/nowoandi/claude-context-meter"
 ; The .vbs, not the .bat: it starts PowerShell with the console hidden from creation, so
@@ -46,11 +46,13 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Files]
 Source: "ClaudeContextMeter.ps1";   DestDir: "{app}"; Flags: ignoreversion
+Source: "CodexContext.ps1";         DestDir: "{app}"; Flags: ignoreversion
 Source: "Start-ContextMeter.vbs";   DestDir: "{app}"; Flags: ignoreversion
 Source: "Start-ContextMeter.bat";   DestDir: "{app}"; Flags: ignoreversion
 Source: "ClaudeContextMeter.ico";   DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md";                DestDir: "{app}"; Flags: ignoreversion
 Source: "README.ru.md";             DestDir: "{app}"; Flags: ignoreversion
+Source: "README.de.md";             DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}";        Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"

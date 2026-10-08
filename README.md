@@ -6,7 +6,26 @@ have burned through in the rate-limit windows.
 
 ![The widget](docs/widget.png)
 
-One PowerShell script, no install, no dependencies, no network.
+PowerShell and built-in WPF, no additional dependencies. Chat data stays local.
+
+## Claude and Codex tabs
+
+Switch between **Claude** (Claude Code and Cowork) and **Codex** at the top. Only the
+selected source scans folders, reads logs, and checks processes. The other source keeps
+its cache in memory and resumes from its saved offsets when selected again. The selection
+survives restarting the widget. This pauses the widget's monitoring, not the agents themselves.
+
+Codex shows up to six chats active within the last three hours, including desktop and CLI.
+These are recent chats, not a confirmed list of open windows. Titles come from
+`%USERPROFILE%\.codex\session_index.jsonl`; context usage and window size come from
+`%USERPROFILE%\.codex\sessions\**\*.jsonl`. `CODEX_HOME` overrides the default directory.
+Cached input is already included in `input_tokens` and is not counted again. Percentages
+refresh when usage is written to the log; an unknown window shows `…`. Clicking a row
+brings the Codex application window forward.
+
+The Codex footer shows recorded plan usage for 5-hour and 7-day windows. Missing data,
+records older than two hours, expired reset times, or different window durations show `—`.
+Subagents are excluded from the chat rows.
 
 ## What a row tells you
 
@@ -141,7 +160,8 @@ Windows with Windows PowerShell 5.1 (shipped with Windows 10 and 11). Nothing el
 
 | File | |
 |---|---|
-| `ClaudeContextMeter.ps1` | the widget — all of it |
+| `ClaudeContextMeter.ps1` | widget UI and Claude monitoring |
+| `CodexContext.ps1` | local Codex data reader |
 | `Start-ContextMeter.bat` | launcher |
 | `ClaudeContextMeter.ico` | application icon |
 

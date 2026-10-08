@@ -156,6 +156,8 @@ $script:HeavyPending = $false
 $script:TickNo = 0
 $script:LastScan = $null
 $script:RunningIds = @()
+$script:ActiveAgent = 'claude'
+. (Join-Path $PSScriptRoot 'CodexContext.ps1')
 $ModelMax = @{}          # model name -> largest prompt ever observed for it
 $script:ModelsDirty = $false
 
@@ -198,12 +200,12 @@ public class CcmWin {
 # claude://local_sessions/<id> is accepted silently but does not switch chats. Until the app
 # exposes a real "focus this session" route, a click only raises the Claude window.
 function Open-Chat([string]$sid) {
-    Focus-Claude
+    if ($script:ActiveAgent -eq 'codex') { Focus-Claude 'Codex' } else { Focus-Claude }
 }
 
-function Focus-Claude {
+function Focus-Claude([string]$app = 'Claude') {
     try {
-        $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq 'Claude' } | Select-Object -First 1
+        $p = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq $app -or ($app -eq 'Codex' -and $_.ProcessName -eq 'Codex' -and $_.MainWindowHandle -ne [IntPtr]::Zero) } | Select-Object -First 1
         if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) {
             # SW_RESTORE (9) only when the window is actually minimised. Sending it
             # unconditionally was a bug: on a MAXIMISED window, restore means "come back
@@ -399,7 +401,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.2.3'
+$Version   = '1.3.0'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -523,6 +525,11 @@ $script:Lang = $DefaultLang
 
 $Strings = @{
     'hdr.chats'       = @{ ru = 'Чаты Claude';        de = 'Claude-Chats'; en = 'Claude chats' }
+    'hdr.codex'       = @{ ru = 'Недавние чаты Codex'; de = 'Letzte Codex-Chats'; en = 'Recent Codex chats' }
+    'sum.codex5'      = @{ ru = 'лимит за 5 часов'; de = 'Limit · 5 Stunden'; en = 'limit · 5 hours' }
+    'sum.codex7'      = @{ ru = 'лимит за 7 дней'; de = 'Limit · 7 Tage'; en = 'limit · 7 days' }
+    'tip.codexclick'  = @{ ru = 'клик — показать окно Codex'; de = 'Klick — Codex in den Vordergrund'; en = 'click — bring Codex to front' }
+    'tip.agenttabs'   = @{ ru = 'Обновляется только выбранный агент'; de = 'Nur der gewählte Agent wird aktualisiert'; en = 'Only the selected agent is refreshed' }
     'sum.5h'          = @{ ru = 'токены за 5 часов';  de = 'Tokens · letzte 5 Stunden'; en = 'tokens · last 5 hours' }
     'sum.7d'          = @{ ru = 'токены за 7 дней';   de = 'Tokens · letzte 7 Tage'; en = 'tokens · last 7 days' }
     'sum.limit'       = @{ ru = 'лимит';              de = 'Limit'; en = 'limit' }
@@ -835,6 +842,34 @@ function Get-RunningSessionIds {
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Claude Context" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" SizeToContent="WidthAndHeight" ResizeMode="NoResize">
+  <Window.Resources>
+    <Style x:Key="AgentTab" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="#8792A3"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="TabBorder" Background="#222A35" CornerRadius="5" Padding="12,5" Margin="0,0,6,0">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="TabBorder" Property="Background" Value="#354459"/>
+                <Setter Property="Foreground" Value="#F5F2EA"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#7FB3FF"/>
+                <Setter TargetName="TabBorder" Property="BorderThickness" Value="1"/>
+                <Setter TargetName="TabBorder" Property="Padding" Value="11,4"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
   <Border CornerRadius="10" Background="#EE14181F" BorderBrush="#2B3340" BorderThickness="1" Padding="12,8,10,9">
     <StackPanel Width="288">
       <Grid>
@@ -845,6 +880,10 @@ function Get-RunningSessionIds {
           <TextBlock x:Name="CloseBtn" Text="✕" Foreground="#8792A3" FontSize="12" Cursor="Hand"/>
         </StackPanel>
       </Grid>
+      <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+        <RadioButton x:Name="ClaudeTab" Content="Claude" GroupName="Agent" IsChecked="True" Style="{StaticResource AgentTab}"/>
+        <RadioButton x:Name="CodexTab" Content="Codex" GroupName="Agent" Style="{StaticResource AgentTab}"/>
+      </StackPanel>
       <StackPanel x:Name="RowsPanel" Margin="0,7,0,0"/>
       <Border Height="1" Background="#2B3340" Margin="0,7,0,7"/>
       <Grid>
@@ -909,10 +948,13 @@ $UpdBtn    = $window.FindName("UpdBtn")
 $HdrLbl    = $window.FindName("HdrLbl")
 $Lbl5      = $window.FindName("Lbl5")
 $Lbl7      = $window.FindName("Lbl7")
+$ClaudeTab = $window.FindName('ClaudeTab')
+$CodexTab  = $window.FindName('CodexTab')
 
 # Remembered across restarts, like the window position. An unknown code falls back to the
 # default rather than leaving every label empty.
 $script:State = Load-State
+if ($script:State['agent'] -eq 'codex') { $script:ActiveAgent = 'codex'; $CodexTab.IsChecked = $true }
 if ($script:State['lang'] -and ($UiLangs.Code -contains $script:State['lang'])) {
     $script:Lang = $script:State['lang']
 }
@@ -967,10 +1009,34 @@ function Apply-Refresh([string]$key) {
     Write-Log ("refresh set to {0} (tick {1} ms, rescan {2} s)" -f $p.Key, $p.Ms, $p.Scan)
 }
 
+function Update-AgentLabels {
+    if ($script:ActiveAgent -eq 'codex') {
+        $HdrLbl.Text = T 'hdr.codex'; $Lbl5.Text = T 'sum.codex5'; $Lbl7.Text = T 'sum.codex7'
+    } else {
+        $HdrLbl.Text = T 'hdr.chats'; $Lbl5.Text = T 'sum.5h'; $Lbl7.Text = T 'sum.7d'
+    }
+    $ClaudeTab.ToolTip = T 'tip.agenttabs'; $CodexTab.ToolTip = T 'tip.agenttabs'
+}
+
+function Set-ActiveAgent([string]$agent) {
+    if ($agent -notin @('claude', 'codex') -or $agent -eq $script:ActiveAgent) { return }
+    $script:ActiveAgent = $agent
+    $script:State['agent'] = $agent
+    Save-State $script:State
+    # Rescan the selected source on the next tick; the other keeps its offsets untouched.
+    if ($agent -eq 'codex') { $script:CodexLastScan = $null }
+    else { $script:LastScan = $null; $script:RunningIds = @(); $script:RefreshClaude = $true }
+    $script:HeavyPending = $false
+    Update-AgentLabels
+    Update-UI
+    if ($timer) { $timer.Interval = [TimeSpan]::FromMilliseconds(150) }
+}
+
+$ClaudeTab.Add_Checked({ Set-ActiveAgent 'claude' })
+$CodexTab.Add_Checked({ Set-ActiveAgent 'codex' })
+
 function Apply-Language {
-    $HdrLbl.Text   = T 'hdr.chats'
-    $Lbl5.Text     = T 'sum.5h'
-    $Lbl7.Text     = T 'sum.7d'
+    Update-AgentLabels
     $LoadNote.Text = T 'note.loading'
     $miAuto.Header    = T 'menu.autostart'
     $miLang.Header    = T 'menu.language'
@@ -1289,6 +1355,7 @@ function New-SessionRow($name, $pct, $tooltip, $dim, $pending, $sid, $src, $winL
 
     $tag = New-Object Windows.Controls.TextBlock
     if ($src -eq 'Cowork') { $tag.Text = "CW"; $tag.Foreground = New-Brush "#7FB3FF" }
+    elseif ($src -eq 'Codex') { $tag.Text = 'CX'; $tag.Foreground = New-Brush '#7DDE72' }
     else                   { $tag.Text = "CC"; $tag.Foreground = New-Brush "#A98BE8" }
     $tag.FontSize = 9; $tag.FontFamily = "Segoe UI"; $tag.FontWeight = 'Bold'
     $tag.VerticalAlignment = 'Center'
@@ -1377,7 +1444,40 @@ function Add-Row($sid, $path, $now, $actTime) {
     $RowsPanel.Children.Add((New-SessionRow $name $pct $tip $dim $false $sid $src (Format-Window $win))) | Out-Null
 }
 
+function Update-CodexUI {
+    $now = Get-Date
+    $RowsPanel.Children.Clear()
+    $sessions = @($script:CodexCache.Values | Where-Object {
+        -not $_.IsAgent -and $_.Id -and $_.File.Exists -and $_.File.LastWriteTime -gt $now.AddMinutes(-$ActiveMin)
+    } | Sort-Object { $_.File.LastWriteTime } -Descending | Select-Object -First $MaxRows)
+    foreach ($session in $sessions) {
+        $name = $script:CodexTitles[$session.Id]
+        if (-not $name -and $session.Cwd) { $name = Split-Path $session.Cwd -Leaf }
+        if (-not $name) { $name = $session.Id.Substring(0, [Math]::Min(8, $session.Id.Length)) }
+        $age = [Math]::Max(0, [Math]::Round(($now - $session.File.LastWriteTime).TotalMinutes))
+        $unknown = ($session.Window -le 0 -or $session.Context -le 0)
+        $pct = 0; $badge = ''; $usage = T 'tip.noctx'
+        if (-not $unknown) {
+            $pct = [Math]::Min(100, 100.0 * $session.Context / $session.Window)
+            $badge = Format-Tokens $session.Window
+            $usage = "$(Format-Tokens $session.Context) / $(Format-Tokens $session.Window) $(T 'tip.tokens')"
+        }
+        $tip = "$name`nCodex · $($session.Cwd)`n$usage`n$(T 'tip.model') $($session.Model)`n$((T 'tip.activity') -f $age)`n$(T 'tip.codexclick')"
+        [void]$RowsPanel.Children.Add((New-SessionRow $name $pct $tip ($age -gt $StaleMin) $unknown $session.Id 'Codex' $badge))
+    }
+    if ($sessions.Count -eq 0) {
+        $key = if ($script:HeavyPending) { 'row.scanning' } else { 'row.none' }
+        [void]$RowsPanel.Children.Add((New-InfoRow (T $key)))
+    }
+    $primary = Get-CodexLimit 'primary' 300
+    $secondary = Get-CodexLimit 'secondary' 10080
+    $Sum5.Text = if ($null -eq $primary) { '—' } else { '{0:N0}%' -f $primary }
+    $Sum7.Text = if ($null -eq $secondary) { '—' } else { '{0:N0}%' -f $secondary }
+    $LoadNote.Visibility = if ($script:HeavyPending) { 'Visible' } else { 'Collapsed' }
+}
+
 function Update-UI {
+    if ($script:ActiveAgent -eq 'codex') { Update-CodexUI; return }
     $now = Get-Date
     $RowsPanel.Children.Clear()
 
@@ -1467,8 +1567,14 @@ function Update-UI {
 
 function Invoke-Tick {
     $script:TickNo = $script:TickNo + 1
+    if ($script:ActiveAgent -eq 'codex') {
+        Update-CodexData $TickBudget $script:ScanEverySec
+        $script:HeavyPending = $script:CodexPending
+    } else {
     Scan-Files
-    if ($script:TickNo -eq 1 -or ($script:TickNo % 5) -eq 0) { Update-Titles; Update-PlanUsage }
+    if ($script:RefreshClaude -or $script:TickNo -eq 1 -or ($script:TickNo % 5) -eq 0) {
+        Update-Titles; Update-PlanUsage; $script:RefreshClaude = $false
+    }
 
     # One process sweep per tick, shared with Update-UI — it used to run twice.
     $script:RunningIds = Get-RunningSessionIds
@@ -1504,6 +1610,7 @@ function Invoke-Tick {
 
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
+    }
 
     # Did a second launch ask us to come back? Auto-reset, so reading it consumes it.
     if ($script:ShowEvent -and $script:ShowEvent.WaitOne(0)) {
