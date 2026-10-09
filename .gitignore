@@ -8,3 +8,6 @@ dist/
 # Scratch folders used while diagnosing - never part of the product.
 _diag/
 _realcopy/
+
+# Personal Claude Code overrides - never shared, never committed.
+.claude/settings.local.json
