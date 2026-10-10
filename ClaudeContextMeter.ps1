@@ -401,7 +401,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.3.0'
+$Version   = '1.3.1'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 
@@ -533,6 +533,11 @@ $Strings = @{
     'sum.5h'          = @{ ru = 'токены за 5 часов';  de = 'Tokens · letzte 5 Stunden'; en = 'tokens · last 5 hours' }
     'sum.7d'          = @{ ru = 'токены за 7 дней';   de = 'Tokens · letzte 7 Tage'; en = 'tokens · last 7 days' }
     'sum.limit'       = @{ ru = 'лимит';              de = 'Limit'; en = 'limit' }
+    'sum.since'       = @{ ru = 'токены с {0}';       de = 'Tokens seit {0}'; en = 'tokens since {0}' }
+    'note.reset'      = @{ ru = 'сброс {0} · через {1}'; de = 'Reset {0} · in {1}'; en = 'resets {0} · in {1}' }
+    'note.planat'     = @{ ru = 'лимит на {0}';       de = 'Limit von {0}'; en = 'limit as of {0}' }
+    'span.dh'         = @{ ru = '{0} д {1} ч';        de = '{0} T {1} Std'; en = '{0}d {1}h' }
+    'span.hm'         = @{ ru = '{0} ч {1} мин';      de = '{0} Std {1} Min'; en = '{0}h {1}m' }
     'note.loading'    = @{ ru = 'догружаю историю…';  de = 'Verlauf wird geladen…'; en = 'loading history…' }
     'row.scanning'    = @{ ru = 'сканирую сессии…';   de = 'Sitzungen werden gesucht…'; en = 'scanning sessions…' }
     'row.none'        = @{ ru = 'нет активных сессий'; de = 'keine aktiven Sitzungen'; en = 'no active sessions' }
@@ -565,28 +570,22 @@ function T([string]$key) {
     return $e[$DefaultLang]
 }
 
-# Plan usage is a number the app keeps, not one the widget measures, so it is only worth
-# showing while the app is still maintaining it. On 03.10.2026 Claude stopped writing
-# plan-usage-history.json: the last entry was stamped 08:00, the moment the seven-day
-# window reset to zero, and the app moved its rate-limit state into IndexedDB under keys
-# named five_hour, seven_day and unifiedWindows. The widget went on reading the file and
-# faithfully displayed "limit 0 %" for the rest of the day - a borrowed number that had
-# quietly stopped being true. A stale figure presented as current is worse than no figure,
-# so the file now has to be recent to count. The token totals beside it are the widget's
-# own measurement and are unaffected.
-$PlanMaxAgeMin = 120
+# Plan usage is a number the app keeps, not one the widget measures. On 03.10.2026 the
+# app stopped refreshing plan-usage-history.json continuously; the widget showed a stale
+# "limit 0 %" all day, and the fix was to drop any figure from a file older than two hours.
+# That rule assumed the file had died. It had not: the app still appends a snapshot, just
+# a few times a day (05.10-10.10: six entries, the last at 09:02 right after the Saturday
+# reset). So from two hours after each snapshot the limit vanished, which is most of the
+# day. Andrej 10.10.2026: "перестало отображаться процентное соотношение".
+#
+# A snapshot is not stale because it is old; it is stale once its WINDOW has turned over.
+# The weekly figure stays true until the next weekly reset, the five-hour one for at most
+# five hours. The snapshot's own time is shown beside it, so an old number never poses as
+# a fresh one - the reason the 03.10 rule existed in the first place.
+$rePlan = [regex]'"t":(\d+)[^{}]*"u":\{"fh":(\d+),"sd":(\d+)'
 
 function Update-PlanUsage {
     try {
-        $age = ((Get-Date) - (Get-Item $UsageFile -ErrorAction Stop).LastWriteTime).TotalMinutes
-        if ($age -gt $PlanMaxAgeMin) {
-            if ($null -ne $script:PlanFh) {
-                Write-Log ("plan usage file is {0:N0} min old - dropping the limit display" -f $age)
-            }
-            $script:PlanFh = $null
-            $script:PlanSd = $null
-            return
-        }
         $fs = [System.IO.File]::Open($UsageFile, 'Open', 'Read', 'ReadWrite')
         try {
             $take = [Math]::Min(4096, $fs.Length)
@@ -595,13 +594,68 @@ function Update-PlanUsage {
             $n = $fs.Read($b, 0, [int]$take)
             $txt = [System.Text.Encoding]::UTF8.GetString($b, 0, $n)
         } finally { $fs.Close() }
-        $ms = [regex]::Matches($txt, '"u":\{"fh":(\d+),"sd":(\d+)')
+        $ms = $rePlan.Matches($txt)
         if ($ms.Count -gt 0) {
             $m = $ms[$ms.Count - 1]
-            $script:PlanFh = [int]$m.Groups[1].Value
-            $script:PlanSd = [int]$m.Groups[2].Value
+            $script:PlanAt = [long][Math]::Floor([long]$m.Groups[1].Value / 1000)
+            $script:PlanFh = [int]$m.Groups[2].Value
+            $script:PlanSd = [int]$m.Groups[3].Value
         }
     } catch {}
+}
+
+# The weekly limit resets at a fixed moment of the week that belongs to the account
+# (Andrej's: Saturday 08:00), so "the last 7 days" counts the wrong tokens - most of them
+# already forgiven. Andrej 10.10.2026: "за 7 дней само по себе не имеет смысла … от этого
+# надо прыгать". The moment is not configured but learned: Claude Code writes the exact
+# reset time into the transcript whenever it reports the weekly limit (rateLimitType
+# seven_day, resetsAt in Unix seconds). Any one of them pins the weekly grid, so the
+# newest one seen is kept across restarts; until one has been seen, the rolling window stays.
+$WeekSec = [long]604800
+$reWeekReset = [regex]'"resetsAt":(\d+)[^{}]*"rateLimitType":"seven_day"'
+
+function Note-WeekAnchor([long]$at) {
+    if ($at -le 0 -or ($script:WeekAnchor -and $at -le $script:WeekAnchor)) { return }
+    $script:WeekAnchor = $at
+    $script:State['weekAnchor'] = $at
+    $script:WeekAnchorDirty = $true
+}
+
+# Last weekly reset at or before $nowSec, or $null while the grid is unknown.
+function Get-LastWeekReset([long]$nowSec) {
+    if (-not $script:WeekAnchor) { return $null }
+    $k = [Math]::Floor(($nowSec - $script:WeekAnchor) / $WeekSec)
+    return [long]($script:WeekAnchor + $k * $WeekSec)
+}
+
+# Each figure lives as long as its own window, see Update-PlanUsage.
+function Get-PlanFreshness([long]$nowSec, $lastReset) {
+    $r = @{ Fh = $false; Sd = $false }
+    if (-not $script:PlanAt) { return $r }
+    $age = $nowSec - $script:PlanAt
+    $r.Fh = ($null -ne $script:PlanFh) -and $age -ge 0 -and $age -lt 5 * 3600
+    if ($null -ne $lastReset) { $r.Sd = ($null -ne $script:PlanSd) -and $script:PlanAt -ge $lastReset }
+    else { $r.Sd = ($null -ne $script:PlanSd) -and $age -ge 0 -and $age -lt 7 * 86400 }
+    return $r
+}
+
+function Get-UiCulture {
+    $name = @{ ru = 'ru-RU'; de = 'de-DE'; en = 'en-GB' }[$script:Lang]
+    if (-not $name) { $name = 'en-GB' }
+    return [Globalization.CultureInfo]::GetCultureInfo($name)
+}
+
+function Format-Moment([long]$sec, [bool]$withDay) {
+    $t = [DateTimeOffset]::FromUnixTimeSeconds($sec).LocalDateTime
+    $fmt = if ($withDay) { 'ddd HH:mm' } else { 'HH:mm' }
+    return $t.ToString($fmt, (Get-UiCulture))
+}
+
+function Format-Span([long]$sec) {
+    if ($sec -lt 0) { $sec = 0 }
+    $h = [long][Math]::Floor($sec / 3600)
+    if ($h -ge 24) { return (T 'span.dh') -f [long][Math]::Floor($h / 24), ($h % 24) }
+    return (T 'span.hm') -f $h, [long][Math]::Floor(($sec % 3600) / 60)
 }
 
 $reTs    = [regex]'"timestamp":"([^"]+)"'
@@ -697,6 +751,10 @@ function Parse-File([string]$path, [long]$maxBytes) {
         if (-not $st.Cwd) {
             $mc = $reCwd.Match($line)
             if ($mc.Success) { $st.Cwd = $mc.Groups[1].Value.Replace('\\', '\') }
+        }
+        if ($line.IndexOf('"rateLimitType":"seven_day"') -ge 0) {
+            $mw = $reWeekReset.Match($line)
+            if ($mw.Success) { Note-WeekAnchor ([long]$mw.Groups[1].Value) }
         }
         if ($line.IndexOf('"usage":{') -lt 0) { continue }
         if ($line.IndexOf('"role":"assistant"') -lt 0) { continue }
@@ -894,6 +952,8 @@ function Get-RunningSessionIds {
         <TextBlock x:Name="Lbl7" Text="токены за 7 дней" Foreground="#B4BECD" FontSize="11" FontFamily="Segoe UI" HorizontalAlignment="Left"/>
         <TextBlock x:Name="Sum7" Text="—" Foreground="#F5F2EA" FontSize="12" FontWeight="Bold" FontFamily="Segoe UI" HorizontalAlignment="Right"/>
       </Grid>
+      <TextBlock x:Name="ResetNote" Text="" Foreground="#8792A3" FontSize="10" FontFamily="Segoe UI"
+                 HorizontalAlignment="Right" Margin="0,2,0,0" Visibility="Collapsed"/>
       <TextBlock x:Name="LoadNote" Text="догружаю историю…" Foreground="#8792A3" FontSize="10" FontStyle="Italic"
                  FontFamily="Segoe UI" Margin="0,5,0,0" Visibility="Collapsed"/>
     </StackPanel>
@@ -948,12 +1008,16 @@ $UpdBtn    = $window.FindName("UpdBtn")
 $HdrLbl    = $window.FindName("HdrLbl")
 $Lbl5      = $window.FindName("Lbl5")
 $Lbl7      = $window.FindName("Lbl7")
+$ResetNote = $window.FindName("ResetNote")
 $ClaudeTab = $window.FindName('ClaudeTab')
 $CodexTab  = $window.FindName('CodexTab')
 
 # Remembered across restarts, like the window position. An unknown code falls back to the
 # default rather than leaving every label empty.
 $script:State = Load-State
+$script:WeekAnchor = $null
+if ($script:State['weekAnchor']) { try { $script:WeekAnchor = [long]$script:State['weekAnchor'] } catch {} }
+$script:WeekAnchorDirty = $false
 if ($script:State['agent'] -eq 'codex') { $script:ActiveAgent = 'codex'; $CodexTab.IsChecked = $true }
 if ($script:State['lang'] -and ($UiLangs.Code -contains $script:State['lang'])) {
     $script:Lang = $script:State['lang']
@@ -1012,6 +1076,7 @@ function Apply-Refresh([string]$key) {
 function Update-AgentLabels {
     if ($script:ActiveAgent -eq 'codex') {
         $HdrLbl.Text = T 'hdr.codex'; $Lbl5.Text = T 'sum.codex5'; $Lbl7.Text = T 'sum.codex7'
+        $ResetNote.Visibility = 'Collapsed'   # the Claude weekly grid says nothing about Codex
     } else {
         $HdrLbl.Text = T 'hdr.chats'; $Lbl5.Text = T 'sum.5h'; $Lbl7.Text = T 'sum.7d'
     }
@@ -1552,6 +1617,11 @@ function Update-UI {
     $nowSec = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $cut5 = $nowSec - 5 * 3600
     $cut7 = $nowSec - 7 * 86400
+    $lastReset = Get-LastWeekReset $nowSec
+    if ($null -ne $lastReset) {
+        $cut7 = $lastReset
+        $Lbl7.Text = (T 'sum.since') -f (Format-Moment $lastReset $true)
+    } else { $Lbl7.Text = T 'sum.7d' }
     $s5 = [long]0; $s7 = [long]0
     foreach ($kv in $Buckets.GetEnumerator()) {
         $t = $kv.Key * 600
@@ -1560,8 +1630,21 @@ function Update-UI {
             if ($t -ge $cut5) { $s5 = $s5 + $kv.Value }
         }
     }
-    if ($null -ne $script:PlanFh) { $Sum5.Text = "$(Format-Tokens $s5) · $(T 'sum.limit') $($script:PlanFh)%" } else { $Sum5.Text = Format-Tokens $s5 }
-    if ($null -ne $script:PlanSd) { $Sum7.Text = "$(Format-Tokens $s7) · $(T 'sum.limit') $($script:PlanSd)%" } else { $Sum7.Text = Format-Tokens $s7 }
+    $fresh = Get-PlanFreshness $nowSec $lastReset
+    $fhOk = $fresh.Fh; $sdOk = $fresh.Sd
+    if ($fhOk) { $Sum5.Text = "$(Format-Tokens $s5) · $(T 'sum.limit') $($script:PlanFh)%" } else { $Sum5.Text = Format-Tokens $s5 }
+    if ($sdOk) { $Sum7.Text = "$(Format-Tokens $s7) · $(T 'sum.limit') $($script:PlanSd)%" } else { $Sum7.Text = Format-Tokens $s7 }
+    $note = @()
+    if ($null -ne $lastReset) {
+        $next = $lastReset + $WeekSec
+        $note += (T 'note.reset') -f (Format-Moment $next $true), (Format-Span ($next - $nowSec))
+    }
+    if (($fhOk -or $sdOk) -and ($nowSec - $script:PlanAt) -gt 15 * 60) {
+        $sameDay = ([DateTimeOffset]::FromUnixTimeSeconds($script:PlanAt).LocalDateTime.Date -eq (Get-Date).Date)
+        $note += (T 'note.planat') -f (Format-Moment $script:PlanAt (-not $sameDay))
+    }
+    $ResetNote.Text = $note -join ' · '
+    $ResetNote.Visibility = if ($note.Count) { 'Visible' } else { 'Collapsed' }
     if ($script:HeavyPending) { $LoadNote.Visibility = 'Visible' } else { $LoadNote.Visibility = 'Collapsed' }
 }
 
@@ -1610,6 +1693,9 @@ function Invoke-Tick {
 
     # persist what was learned about model windows (no-op unless something changed)
     if (($script:TickNo % 20) -eq 0) { Save-ModelMax }
+    # The weekly grid is saved where it is learned, not where it is drawn: the footer is not
+    # redrawn while the widget is collapsed, and a grid found then was lost on the next exit.
+    if ($script:WeekAnchorDirty) { Save-State $script:State; $script:WeekAnchorDirty = $false }
     }
 
     # Did a second launch ask us to come back? Auto-reset, so reading it consumes it.
@@ -1653,7 +1739,15 @@ function Invoke-Tick {
 
 $timer = New-Object Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(150)
-$timer.Add_Tick({ try { Invoke-Tick } catch {} })
+# A tick must never kill the widget, but swallowing its errors silently hid a broken footer
+# for as long as the widget ran. The first failure of each kind goes to the log.
+$script:TickErrors = @{}
+$timer.Add_Tick({
+    try { Invoke-Tick } catch {
+        $msg = "$($_.Exception.Message) @ $($_.InvocationInfo.ScriptLineNumber)"
+        if (-not $script:TickErrors.ContainsKey($msg)) { $script:TickErrors[$msg] = $true; Write-Log "tick failed: $msg" }
+    }
+})
 $timer.Start()
 
 # Take over autostart from the shortcut/task setup before the window appears, and repair a

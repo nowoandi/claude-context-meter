@@ -49,8 +49,17 @@ Zeilen werden nach 30 Minuten Stille blass. Unter dem Mauszeiger stehen Projektp
 Tokenzahl, Modell und wann der Chat zuletzt aktiv war. Ein Klick holt das Claude-Fenster
 nach vorn und lässt seine Größe in Ruhe — ein maximiertes Fenster bleibt maximiert.
 
-Die Fußzeile addiert alle Sitzungen samt Subagenten über die beiden Limitfenster — 5 Stunden
-und 7 Tage. Wo die App den Planverbrauch notiert hat, steht sein Prozentwert daneben.
+Die Fußzeile addiert alle Sitzungen samt Subagenten über die beiden Limitfenster. Das
+Wochenfenster zählt ab dem wöchentlichen Reset des Kontos, nicht über die letzten sieben
+Tage: Tokens von vor dem Reset zählen nirgends mehr. Den Zeitpunkt lernt das Widget selbst —
+Claude Code schreibt die genaue Reset-Zeit ins Protokoll, sobald es das Wochenlimit meldet.
+Bis eine solche Zeile auftaucht, gleitet das Fenster über die letzten sieben Tage. Eine
+Zeile darunter nennt den nächsten Reset.
+
+Wo die App den Planverbrauch notiert hat, steht sein Prozentwert neben der Summe, solange
+das Fenster nicht gewechselt hat: fünf Stunden beim kurzen, bis zum nächsten Reset beim
+wöchentlichen. Die App notiert ihn nur wenige Male am Tag, deshalb trägt ein Wert, der
+älter als eine Viertelstunde ist, seine Uhrzeit.
 
 ## Starten
 

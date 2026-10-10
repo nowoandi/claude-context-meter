@@ -11,7 +11,7 @@ $strings = $ast.Find({ param($n) $n -is [Management.Automation.Language.Assignme
 Invoke-Expression $strings.Extent.Text
 $xaml = $ast.Find({ param($n) $n -is [Management.Automation.Language.StringConstantExpressionAst] -and $n.Value -like '<Window xmlns=*' }, $true).Value
 $window = [Windows.Markup.XamlReader]::Parse($xaml)
-foreach ($name in @('RowsPanel', 'HdrLbl', 'Lbl5', 'Lbl7', 'Sum5', 'Sum7', 'LoadNote', 'ClaudeTab', 'CodexTab')) {
+foreach ($name in @('RowsPanel', 'HdrLbl', 'Lbl5', 'Lbl7', 'Sum5', 'Sum7', 'ResetNote', 'LoadNote', 'ClaudeTab', 'CodexTab')) {
     Set-Variable -Name $name -Value $window.FindName($name)
 }
 $script:Lang = 'ru'; $script:ActiveAgent = 'claude'; $script:State = @{}

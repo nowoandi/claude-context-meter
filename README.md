@@ -48,9 +48,17 @@ Rows dim after 30 minutes of silence. Hovering a row shows the project path, the
 token count, the model, and when the chat was last active. Clicking one brings the Claude
 window to the front and leaves its size alone — a maximised window stays maximised.
 
-The footer adds up every session, subagents included, over the two rate-limit windows —
-5 hours and 7 days. When the app has recorded plan usage, the percentage it reports is
-shown next to each total.
+The footer adds up every session, subagents included, over the two rate-limit windows.
+The weekly one is counted from the account's own weekly reset rather than over the last
+seven days, because tokens from before the reset no longer count against anything. The
+widget learns that moment from Claude Code, which writes the exact reset time into the
+transcript whenever it reports the weekly limit; until it has seen one, the window rolls
+over the last seven days. A small line underneath says when the next reset comes.
+
+When the app has recorded plan usage, its percentage stands next to each total for as
+long as that window has not turned over: five hours for the short one, until the next
+reset for the weekly one. The app records it only a few times a day, so a figure older
+than a quarter of an hour carries its time.
 
 ## Running it
 
