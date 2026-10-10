@@ -8,3 +8,6 @@ dist/
 # Scratch folders used while diagnosing - never part of the product.
 _diag/
 _realcopy/
+
+# Compiled launcher - built from launcher\ by build.ps1, shipped inside the installer.
+build/

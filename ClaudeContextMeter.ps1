@@ -234,84 +234,88 @@ function Focus-Claude([string]$app = 'Claude') {
 #  * Missing APPDATA must not fall back to a cwd-relative path: that would resolve to
 #    wherever the process happened to be started from.
 #
-# Why a scheduled task and not the HKCU Run key, which is what this used to be:
-# a Run entry fires at logon and never again. This machine is not rebooted — it sleeps and
-# wakes, and modern standby is not a logon. Measured on 16.08.2026: the Run entry had been
-# in place for 26 hours and had never once executed, because the last logon predated it.
-# Docker Desktop and Yandex Disk, also Run entries, were still the instances started at that
-# same old logon. So "autostart is configured" and "the widget comes back" were not the same
-# statement at all. One task with a logon trigger AND a 15-minute repetition is still ONE
-# mechanism, but it also brings the widget back after a crash or a kill, without waiting for
-# a reboot that may be weeks away.
-$TaskName     = "ClaudeContextMeter"
+# Why the HKCU Run key, again. From 16.08.2026 to 1.3.1 autostart was a scheduled task:
+# the Run key had sat unused for 26 hours on a machine that sleeps instead of logging off,
+# and a task could also repeat every 15 minutes as a watchdog. The watchdog was dropped
+# soon after (a widget restarted every quarter hour hides the defect that killed it), and
+# from then on the task fired at logon only - exactly what a Run entry does. What remained
+# was the cost: Task Manager's Startup apps tab does not list scheduled tasks, so the
+# widget was missing there entirely and could not be switched off where Windows users look.
+# Andrej 10.10.2026: in Task Manager "нет отображения ни имени, ни иконки".
+#
+# The Run entry points at ClaudeContextMeter.exe, whose name, publisher and icon are what
+# that tab shows. Switching it off there writes StartupApproved, and the widget reads that
+# back, so the tab and the widget's own menu can never disagree.
+$TaskName     = "ClaudeContextMeter"   # the mechanism before 1.3.2, kept to migrate away from
 $RunKey       = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run"
+$ApprovedKey  = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 $RunValueName = "ClaudeContextMeter"
 
 # Derived from where this script actually lies, never hard-coded. On 15.08.2026 the widget
-# was moved to its own folder and both autostart entries kept pointing at the old path —
+# was moved to its own folder and both autostart entries kept pointing at the old path -
 # they had the location baked in. Anything built from $PSCommandPath survives the next move.
-# Launched through the .vbs whenever it is there. powershell.exe is a console application
-# and Windows gives it a console window even though this script only ever shows a WPF
-# window; -WindowStyle Hidden hides that console only AFTER it exists, so a black window
-# flashes at every logon. WScript.Shell.Run with show = 0 creates it hidden from the start.
-# The direct fallback keeps a bare .ps1 working for anyone who copied only that file.
-function Get-AutostartLauncher {
-    $vbs = Join-Path (Split-Path -Parent $PSCommandPath) 'Start-ContextMeter.vbs'
-    if (Test-Path $vbs) {
-        return @{ Exe = (Join-Path $env:WINDIR 'System32\wscript.exe'); Args = ('"' + $vbs + '"') }
-    }
-    return @{
-        Exe  = (Join-Path $PSHOME 'powershell.exe')
-        Args = ('-STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"')
-    }
+# The launcher executable whenever it is there: it has the name and icon, and as a windowed
+# program it never opens a console. Then the .vbs, which at least starts powershell.exe
+# hidden from creation. The bare fallback keeps a lone .ps1 working for anyone who copied
+# only that file.
+function Get-AutostartCommand {
+    $dir = Split-Path -Parent $PSCommandPath
+    $exe = Join-Path $dir 'ClaudeContextMeter.exe'
+    if (Test-Path $exe) { return '"' + $exe + '"' }
+    $vbs = Join-Path $dir 'Start-ContextMeter.vbs'
+    if (Test-Path $vbs) { return '"' + (Join-Path $env:WINDIR 'System32\wscript.exe') + '" "' + $vbs + '"' }
+    return '"' + (Join-Path $PSHOME 'powershell.exe') + '" -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
 }
 
+# Enabled means: the Run entry exists AND Task Manager has not switched it off. The first
+# byte of the StartupApproved value is even for on, odd for off.
 function Get-AutostartEnabled {
     try {
-        return $null -ne (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
+        $cur = (Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
+        if (-not $cur) { return $false }
+        $ap = (Get-ItemProperty -Path $ApprovedKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
+        if ($ap -and $ap.Length -gt 0 -and ($ap[0] -band 1)) { return $false }
+        return $true
     } catch { return $false }
 }
 
-# Returns $null on success or the error text — never throws, so a locked-down machine
+# Returns $null on success or the error text - never throws, so a locked-down machine
 # cannot take the whole widget down with it.
 function Set-AutostartEnabled([bool]$enabled) {
     try {
         if ($enabled) {
-            $l = Get-AutostartLauncher
-            $act = New-ScheduledTaskAction -Execute $l.Exe -Argument $l.Args
-            # At logon, once. There was briefly a 15-minute repetition here as a watchdog,
-            # and it was the wrong answer twice over: a widget that is restarted every
-            # quarter of an hour hides the defect that killed it, and it shoulders its way
-            # back onto the screen on days when Claude is not even running. If the widget
-            # dies, that is a bug to find, not a thing to paper over.
-            $trg = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
-            $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-                        -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-            $prn = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-            Register-ScheduledTask -TaskName $TaskName -Action $act -Trigger $trg -Settings $set -Principal $prn -Force -ErrorAction Stop | Out-Null
-            Write-Log "autostart task registered -> $PSCommandPath"
+            $cmd = Get-AutostartCommand
+            if (-not (Test-Path $RunKey)) { New-Item -Path $RunKey -Force | Out-Null }
+            Set-ItemProperty -Path $RunKey -Name $RunValueName -Value $cmd -ErrorAction Stop
+            # Switched off in Task Manager earlier? Turning it on here has to mean on.
+            $ap = (Get-ItemProperty -Path $ApprovedKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
+            if ($ap -and $ap.Length -gt 0 -and ($ap[0] -band 1)) {
+                Set-ItemProperty -Path $ApprovedKey -Name $RunValueName -Value ([byte[]](2,0,0,0,0,0,0,0,0,0,0,0)) -Type Binary -ErrorAction Stop
+            }
+            Write-Log "autostart entry written -> $cmd"
         } else {
-            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-            Write-Log "autostart task removed"
+            Remove-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue
+            Remove-ItemProperty -Path $ApprovedKey -Name $RunValueName -ErrorAction SilentlyContinue
+            Write-Log "autostart entry removed"
         }
         return $null
     } catch { return $_.Exception.Message }
 }
 
-# The task carries an absolute path, so it goes stale the moment the folder moves.
-# Re-register silently when it no longer matches — but only while autostart is switched on,
-# so this never turns it back on behind the user's back.
+# The entry carries an absolute path, so it goes stale the moment the folder moves or the
+# launcher arrives. Rewritten silently when it no longer matches - but only while it is
+# there at all, so this never turns autostart back on behind the user's back, and it leaves
+# StartupApproved alone, so a switch-off in Task Manager survives the rewrite.
 function Sync-AutostartPath {
-    if (-not (Get-AutostartEnabled)) { return }
     try {
-        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-        $act = $task.Actions | Select-Object -First 1
-        $l = Get-AutostartLauncher
-        if ($act.Arguments -ne $l.Args -or $act.Execute -ne $l.Exe) {
-            $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" }
-            Write-Log "autostart path updated"
+        $cur = (Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
+        if (-not $cur) { return }
+        $want = Get-AutostartCommand
+        if ($cur -ne $want) {
+            Set-ItemProperty -Path $RunKey -Name $RunValueName -Value $want -ErrorAction Stop
+            Write-Log "autostart path updated -> $want"
         }
-    } catch {}
+    } catch { Write-Log ("autostart path could not be updated: " + $_.Exception.Message) }
 }
 
 function Load-State {
@@ -332,53 +336,53 @@ function Save-State($h) {
     } catch {}
 }
 
-# One-shot migration off the two external mechanisms this widget used to be started by.
-# Order matters: take over FIRST, remove SECOND. Removing first would leave the machine
-# with no autostart at all if writing the Run key failed. Guarded by a flag rather than
-# run forever, because it only ever matters on a machine set up before this existed.
+# One-shot migration off the mechanisms this widget used to be started by: a Startup-folder
+# shortcut (before 16.08.2026) and the scheduled task (16.08.2026 to 1.3.1). Order matters:
+# take over FIRST, remove SECOND, so a failed write never leaves the machine with no
+# autostart at all. Something is removed only when its COMMAND names this widget - a
+# matching name alone is a coincidence, not evidence. Guarded by a flag, and the flag is set
+# only once nothing legacy is left, so a half-done swap is retried at the next start.
 function Invoke-AutostartMigration {
     $state = Load-State
-    if ($state['autostartTaskMigrated']) { return }
+    if ($state['autostartRunMigrated']) { return }
 
     $found = $false
+    $ok = $true
 
-    # 1. Startup-folder shortcut - only if its command actually names this widget.
     if ($env:APPDATA) {
         $lnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\ClaudeContextMeter.lnk"
         if (Test-Path $lnk) {
             try {
                 $sh = New-Object -ComObject WScript.Shell
                 $sc = $sh.CreateShortcut($lnk)
-                if ($sc.Arguments -like '*ClaudeContextMeter.ps1*') {
+                if (($sc.Arguments + ' ' + $sc.TargetPath) -match 'ClaudeContextMeter\.ps1|Start-ContextMeter\.vbs') {
                     $found = $true
                     if (-not (Get-AutostartEnabled)) { $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" } }
-                    if (Get-AutostartEnabled) {
-                        Remove-Item $lnk -Force -ErrorAction SilentlyContinue
-                        Write-Log "legacy startup shortcut removed"
-                    }
+                    if (Get-AutostartEnabled) { Remove-Item $lnk -Force -ErrorAction SilentlyContinue; Write-Log "legacy startup shortcut removed" }
+                    else { $ok = $false }
                 }
-            } catch {}
+            } catch { $ok = $false }
         }
     }
 
-    # 2. Run-key entry - same evidence rule. This is the mechanism the widget itself used
-    #    until 16.08.2026; it is removed only once the task has taken over, so a machine is
-    #    never left with no autostart at all because one half of the swap failed.
     try {
-        $cur = (Get-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
-        if ($cur -and $cur -like '*ClaudeContextMeter.ps1*') {
-            $found = $true
-            if (-not (Get-AutostartEnabled)) { $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" } }
-            if (Get-AutostartEnabled) {
-                Remove-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue
-                Write-Log "legacy Run-key entry removed"
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if ($task) {
+            $act = $task.Actions | Select-Object -First 1
+            if (($act.Execute + ' ' + $act.Arguments) -match 'ClaudeContextMeter\.ps1|Start-ContextMeter\.vbs') {
+                $found = $true
+                # A task that existed was autostart switched on; carry that over as is.
+                if (-not (Get-AutostartEnabled)) { $e = Set-AutostartEnabled $true; if ($e) { Write-Log "autostart could not be enabled: $e" } }
+                if (Get-AutostartEnabled) {
+                    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+                    Write-Log "legacy scheduled task removed"
+                } else { $ok = $false }
             }
         }
-    } catch {}
+    } catch { $ok = $false; Write-Log ("scheduled task migration failed: " + $_.Exception.Message) }
 
-    # Only close the migration once nothing legacy is left; otherwise retry next launch.
-    if (-not $found -or (Get-AutostartEnabled)) {
-        $state['autostartTaskMigrated'] = $true
+    if ($ok -and (-not $found -or (Get-AutostartEnabled))) {
+        $state['autostartRunMigrated'] = $true
         Save-State $state
     }
 }
@@ -401,7 +405,7 @@ function Invoke-AutostartMigration {
 #
 # The check also breaks the "no network at all" promise this widget used to make, so it is
 # a setting, it is stated in the README, and it talks to exactly one host: api.github.com.
-$Version   = '1.3.1'
+$Version   = '1.3.2'
 $Repo      = 'nowoandi/claude-context-meter'
 $OldAppIds = @()   # @( @{ Name = 'FormerName'; AppId = '{GUID}' } )
 

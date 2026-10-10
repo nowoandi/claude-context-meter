@@ -1,17 +1,18 @@
 ; Inno Setup script for Claude Context Meter.
-; Build:  "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" ClaudeContextMeter.iss
+; Build:  powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
+;         (compiles build\ClaudeContextMeter.exe from launcher\, then runs ISCC on this file)
 ;
 ; Installs per-user into %LOCALAPPDATA%\Programs so no administrator rights are needed —
-; the widget writes only to its own state files and a scheduled task under the current
-; user, and nothing it does warrants an elevation prompt.
+; the widget writes only to its own state files and its HKCU autostart entry, and nothing
+; it does warrants an elevation prompt.
 
 #define AppName      "Claude Context Meter"
-#define AppVersion   "1.3.1"
-#define AppPublisher "nowoandi"
+#define AppVersion   "1.3.2"
+#define AppPublisher "Andrej Hermann"
 #define AppURL       "https://github.com/nowoandi/claude-context-meter"
-; The .vbs, not the .bat: it starts PowerShell with the console hidden from creation, so
-; nothing flashes on screen. The .bat now only forwards to it and stays for old shortcuts.
-#define AppExeName   "Start-ContextMeter.vbs"
+; The widget's own executable since 1.3.2: it carries the name and icon Task Manager shows,
+; and as a windowed program it opens no console. The .vbs and .bat stay for old shortcuts.
+#define AppExeName   "ClaudeContextMeter.exe"
 
 [Setup]
 AppId={{7C1F4E92-3A6D-4B58-9E0C-2D5A8F14B7C3}
@@ -28,7 +29,7 @@ PrivilegesRequired=lowest
 OutputDir=dist
 OutputBaseFilename=ClaudeContextMeter-{#AppVersion}-setup
 SetupIconFile=ClaudeContextMeter.ico
-UninstallDisplayIcon={app}\ClaudeContextMeter.ico
+UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -45,6 +46,7 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Files]
+Source: "build\ClaudeContextMeter.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ClaudeContextMeter.ps1";   DestDir: "{app}"; Flags: ignoreversion
 Source: "CodexContext.ps1";         DestDir: "{app}"; Flags: ignoreversion
 Source: "Start-ContextMeter.vbs";   DestDir: "{app}"; Flags: ignoreversion
@@ -55,20 +57,20 @@ Source: "README.ru.md";             DestDir: "{app}"; Flags: ignoreversion
 Source: "README.de.md";             DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}";        Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"
-Name: "{userdesktop}\{#AppName}";  Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; IconFilename: "{app}\ClaudeContextMeter.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#AppName}";        Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
+Name: "{userdesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; Through wscript.exe by name rather than by letting the shell work out what a .vbs is.
-; The association is normally fine, but a launcher that depends on one is a launcher that
-; can be broken by something entirely unrelated to this program.
-Filename: "{sys}\wscript.exe"; Parameters: """{app}\{#AppExeName}"""; Description: "{cm:LaunchProgram,{#AppName}}"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-; Autostart is a scheduled task owned by the widget, not something the installer created,
-; so the uninstaller has to take it out explicitly. Without this the task would survive as
-; an entry pointing at files that no longer exist. runhidden, and failures are ignored:
-; there may simply be no task, which is not an error.
+; Autostart is written by the widget, not by the installer, so the uninstaller has to take
+; it out explicitly, or it would survive as an entry pointing at files that no longer exist.
+; Since 1.3.2 it is the HKCU Run value (plus Task Manager's StartupApproved switch); before
+; that it was a scheduled task, which an install that was never started again may still
+; have. runhidden, and failures are ignored: there may simply be nothing, which is not an error.
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ClaudeContextMeter /f"; Flags: runhidden; RunOnceId: "DelRun"
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"" /v ClaudeContextMeter /f"; Flags: runhidden; RunOnceId: "DelApproved"
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""ClaudeContextMeter"" /F"; Flags: runhidden skipifdoesntexist; RunOnceId: "DelTask"
 
 [UninstallDelete]

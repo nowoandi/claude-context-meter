@@ -62,18 +62,20 @@ than a quarter of an hour carries its time.
 
 ## Running it
 
+Installed, it starts as **`ClaudeContextMeter.exe`**. That executable carries the name,
+publisher and icon, and runs the script inside its own process, so Task Manager lists one
+process called *Claude Context Meter* rather than an anonymous *Windows PowerShell*, and as
+a windowed program it never opens a console. `build.ps1` compiles it from `launcher\`.
+
+From a plain copy of the files, double-click **`Start-ContextMeter.vbs`**, or run
+
 ```bash
 powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ClaudeContextMeter.ps1
 ```
 
-Better, double-click **`Start-ContextMeter.vbs`**. `powershell.exe` is a console
-application, so Windows gives it a console window even though this script only ever shows a
-WPF window, and `-WindowStyle Hidden` hides that console only after it exists — which is
-what makes a black window flash on every start. The `.vbs` creates it hidden from the
-outset, so nothing appears. `Start-ContextMeter.bat` still works and simply forwards to it.
-
-A shortcut with the app icon is easy to make: point it at the `.vbs` and set its icon to
-`ClaudeContextMeter.ico`.
+The `.vbs` exists because `powershell.exe` is a console application: Windows gives it a
+console window, and `-WindowStyle Hidden` hides it only after it exists, which is the black
+flash at every start. The `.vbs` creates it hidden from the outset.
 
 Drag the widget anywhere — it remembers where you put it. `✕` hides it; it keeps running
 and comes back from the tray icon. Only **Exit** in the tray menu really ends it. Launching it again while it is hidden just
@@ -86,9 +88,10 @@ brings it back — there is never a second copy.
 Click the gear, right-click the widget, or right-click the tray icon — the same settings
 either way. Double-clicking the tray icon shows or hides the window.
 
-- **Start at login** — registers a scheduled task with a logon trigger, running as you,
-  without admin rights. The tick is read from the Task Scheduler every time a menu opens,
-  so a task removed from outside shows as off instead of leaving a stale tick behind.
+- **Start at login** — an entry in the ordinary Windows autostart (the `Run` key of your
+  account), so it appears in Task Manager's **Startup apps** tab with its icon and can be
+  switched off there too. The tick is read back every time a menu opens and honours that
+  switch, so the tab and the menu never disagree.
 - **Language** — English, German or Russian, applied immediately.
 - **Refresh rate** — Normal (3 s), Easy (10 s) or Minimal (30 s). Both the tick and the
   recursive rescan are stretched together, because the rescan is the expensive half;
@@ -107,19 +110,15 @@ The widget runs at `BelowNormal` priority, so it gets the processor only when no
 wants it. Together with the refresh setting that is the honest version of "keep it off my
 way" — pinning it to one core would not reduce the work, only confine it.
 
-The task's command is built from the script's own location, and a stale path is repaired on
-the next start, so moving the folder does not break it.
+The entry's command is built from the program's own location, and a stale path is repaired
+on the next start, so moving the folder does not break it.
 
-A scheduled task rather than a `Run` registry entry, because a `Run` entry fires at logon
-and never again — and a machine that sleeps for weeks instead of rebooting may not see a
-logon for just as long. There is deliberately no repeating trigger: restarting a widget on
-a timer hides whatever killed it, and pushes it onto the screen on days you are not using
-Claude at all.
-
-Anything the widget was started by before — a Startup-folder shortcut, a `Run` entry — is
-taken over on first run: the task is registered first, and only once that succeeded is the
-old mechanism removed. Two autostart entries for one program is a Task Manager annoyance
-worth designing out.
+Up to 1.3.1 autostart was a scheduled task, at first so that it could also restart the
+widget every 15 minutes. That repetition was dropped — restarting a widget on a timer hides
+whatever killed it — and from then on the task did exactly what a `Run` entry does, at the
+price of being invisible in the Startup apps tab. 1.3.2 moves it back: the task is replaced
+by the `Run` entry on first start, the entry written first, the task removed only once that
+succeeded. A Startup-folder shortcut from even older versions is taken over the same way.
 
 ## Notification area
 

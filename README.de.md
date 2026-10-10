@@ -63,15 +63,20 @@ wöchentlichen. Die App notiert ihn nur wenige Male am Tag, deshalb trägt ein W
 
 ## Starten
 
+Installiert startet es als **`ClaudeContextMeter.exe`**. Diese Datei trägt Name,
+Herausgeber und Symbol und führt das Skript im eigenen Prozess aus, sodass der Task-Manager
+einen Prozess *Claude Context Meter* zeigt statt eines namenlosen *Windows PowerShell*. Als
+Fensterprogramm öffnet sie keine Konsole. `build.ps1` baut sie aus `launcher\`.
+
+Aus einer einfachen Kopie der Dateien: Doppelklick auf **`Start-ContextMeter.vbs`** oder
+
 ```bash
-powershell -STA -NoProfile -ExecutionPolicy Bypass -File ClaudeContextMeter.ps1
+powershell -STA -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ClaudeContextMeter.ps1
 ```
 
-Besser mit einem Doppelklick auf **`Start-ContextMeter.vbs`**. `powershell.exe` ist eine
-Konsolenanwendung, also gibt Windows ihr ein Konsolenfenster, obwohl das Skript nur ein
-WPF-Fenster zeigt, und `-WindowStyle Hidden` versteckt diese Konsole erst, *nachdem* es sie
-gibt — daher das schwarze Fenster, das bei jedem Start aufblitzt. Die `.vbs` erzeugt sie von
-vornherein versteckt, sodass gar nichts erscheint.
+Die `.vbs` gibt es, weil `powershell.exe` eine Konsolenanwendung ist: Windows gibt ihr ein
+Konsolenfenster, und `-WindowStyle Hidden` versteckt es erst, *nachdem* es existiert —
+daher das schwarze Aufblitzen bei jedem Start. Die `.vbs` erzeugt sie von vornherein versteckt.
 
 Das Widget lässt sich mit der Maus verschieben und merkt sich, wohin. Das `✕` blendet es
 aus; es läuft weiter und kommt über das Symbol im Infobereich zurück. Wirklich beendet wird
@@ -86,10 +91,10 @@ Klick auf das Zahnrad, Rechtsklick auf das Widget oder Rechtsklick auf das Symbo
 Infobereich — überall dieselben Einstellungen. Ein Doppelklick auf das Symbol zeigt oder
 verbirgt das Fenster.
 
-- **Bei der Anmeldung starten** — legt eine geplante Aufgabe mit Anmelde-Auslöser an, unter
-  Ihrem Konto, ohne Administratorrechte. Der Haken wird bei jedem Öffnen des Menüs aus der
-  Aufgabenplanung gelesen, damit eine von außen entfernte Aufgabe als *aus* erscheint statt
-  als veralteter Haken.
+- **Bei der Anmeldung starten** — ein Eintrag im gewöhnlichen Windows-Autostart (dem
+  `Run`-Schlüssel Ihres Kontos). Damit steht das Widget im Task-Manager unter **Autostart
+  von Apps** mit seinem Symbol und lässt sich auch dort abschalten. Der Haken wird bei jedem
+  Öffnen des Menüs neu gelesen und beachtet diesen Schalter, sodass beide nie widersprechen.
 - **Sprache** — Englisch, Deutsch oder Russisch, sofort wirksam.
 - **Aktualisierungsrate** — Normal (3 s), Sparsam (10 s) oder Minimal (30 s). Takt und
   vollständiger Neudurchlauf der Ordner werden zusammen gestreckt, denn der Neudurchlauf ist
@@ -106,14 +111,16 @@ verbirgt das Fenster.
 Das Widget läuft mit der Priorität `BelowNormal` und bekommt den Prozessor damit nur, wenn
 ihn sonst niemand will.
 
-Der Befehl der Aufgabe wird aus dem tatsächlichen Ort des Skripts gebaut und ein veralteter
-Pfad beim nächsten Start repariert; ein Verschieben des Ordners bricht den Autostart nicht.
+Der Befehl des Eintrags wird aus dem tatsächlichen Ort des Programms gebaut und ein
+veralteter Pfad beim nächsten Start repariert; ein Verschieben des Ordners bricht den
+Autostart nicht.
 
-Eine Aufgabe statt eines `Run`-Eintrags in der Registrierung, weil ein `Run`-Eintrag bei der
-Anmeldung greift und danach nie wieder — und eine Maschine, die wochenlang schläft statt neu
-zu starten, sieht ebenso lange keine Anmeldung. Einen wiederholenden Auslöser gibt es
-bewusst nicht: ein Widget im Minutentakt neu zu starten verbirgt den Fehler, der es
-umgebracht hat, und drängt sich an Tagen auf den Bildschirm, an denen Claude gar nicht läuft.
+Bis 1.3.1 war der Autostart eine geplante Aufgabe, anfangs, damit sie das Widget zusätzlich
+alle 15 Minuten neu starten konnte. Diese Wiederholung fiel weg — ein Neustart im Takt
+verbirgt den Fehler, der das Widget umgebracht hat —, und danach tat die Aufgabe genau das,
+was ein `Run`-Eintrag tut, nur unsichtbar unter Autostart von Apps. 1.3.2 ersetzt sie beim
+ersten Start durch den `Run`-Eintrag: erst wird der Eintrag geschrieben, erst danach die
+Aufgabe entfernt.
 
 ## Symbol im Infobereich
 
